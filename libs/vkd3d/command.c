@@ -14429,6 +14429,75 @@ static void STDMETHODCALLTYPE d3d12_command_queue_ExecuteCommandLists(ID3D12Comm
     d3d12_command_queue_add_submission(command_queue, &sub);
 }
 
+static HRESULT STDMETHODCALLTYPE d3d12_command_queue_Signal(ID3D12CommandQueue *iface,
+        ID3D12Fence *fence_iface, UINT64 value);
+
+static void STDMETHODCALLTYPE d3d12_command_queue_ExecuteCommandListsLFX2(ID3D12CommandQueue *iface,
+        UINT command_list_count, ID3D12CommandList *const *command_lists)
+{
+    struct d3d12_command_queue *command_queue = impl_from_ID3D12CommandQueue(iface);
+    struct vkd3d_lfx2_vtable *lfx2 = vkd3d_lfx2_get_vtable();
+    struct vkd3d_lfx2_context *lfx2_context = &command_queue->device->lfx2_context;
+    UINT new_command_list_count = command_list_count, i = 0;
+    ID3D12CommandList **new_command_lists;
+    struct lfx2Dx12SubmitAux lfx2_aux;
+
+    if (!lfx2 || command_queue->desc.Type != D3D12_COMMAND_LIST_TYPE_DIRECT)
+    {
+        d3d12_command_queue_ExecuteCommandLists(iface, command_list_count, command_lists);
+        return;
+    }
+
+    pthread_mutex_lock(&lfx2_context->current_implicit_frame_lock);
+    if (!lfx2_context->current_implicit_frame)
+    {
+        lfx2_context->current_implicit_frame = lfx2->FrameDequeueImplicit(lfx2_context->implicit_context, false);
+        if (lfx2_context->current_implicit_frame) {
+            lfx2->Dx12ContextBeginFrame(lfx2_context->dx12_context, lfx2_context->current_implicit_frame);
+        }
+    }
+    pthread_mutex_unlock(&lfx2_context->current_implicit_frame_lock);
+
+    lfx2_aux = lfx2->Dx12ContextBeforeSubmit(lfx2_context->dx12_context, iface);
+
+    if (lfx2_aux.executeBefore)
+        new_command_list_count++;
+
+    if (lfx2_aux.executeAfter)
+        new_command_list_count++;
+
+    if (!(new_command_lists = vkd3d_calloc(new_command_list_count, sizeof(*new_command_lists))))
+    {
+        ERR("Failed to allocate command list array.");
+        return;
+    }
+
+    if (lfx2_aux.executeBefore)
+        new_command_lists[i++] = (ID3D12CommandList *)lfx2_aux.executeBefore;
+
+    memcpy(&new_command_lists[i], command_lists, command_list_count * sizeof(*command_lists));
+    i += command_list_count;
+
+    if (lfx2_aux.executeAfter)
+        new_command_lists[i++] = (ID3D12CommandList *)lfx2_aux.executeAfter;
+
+    d3d12_command_queue_ExecuteCommandLists(iface, new_command_list_count, new_command_lists);
+
+    if (lfx2_aux.executeBefore)
+        d3d12_command_list_Release((d3d12_command_list_iface *)lfx2_aux.executeBefore);
+
+    if (lfx2_aux.executeAfter)
+        d3d12_command_list_Release((d3d12_command_list_iface *)lfx2_aux.executeAfter);
+
+    vkd3d_free(new_command_lists);
+
+    if (lfx2_aux.fence)
+    {
+        d3d12_command_queue_Signal(iface, lfx2_aux.fence, lfx2_aux.fenceValue);
+        d3d12_fence_Release((d3d12_fence_iface *)lfx2_aux.fence);
+    }
+}
+
 static void STDMETHODCALLTYPE d3d12_command_queue_SetMarker(ID3D12CommandQueue *iface,
         UINT metadata, const void *data, UINT size)
 {
@@ -14600,7 +14669,7 @@ static CONST_VTBL struct ID3D12CommandQueueVtbl d3d12_command_queue_vtbl =
     /* ID3D12CommandQueue methods */
     d3d12_command_queue_UpdateTileMappings,
     d3d12_command_queue_CopyTileMappings,
-    d3d12_command_queue_ExecuteCommandLists,
+    d3d12_command_queue_ExecuteCommandListsLFX2,
     d3d12_command_queue_SetMarker,
     d3d12_command_queue_BeginEvent,
     d3d12_command_queue_EndEvent,

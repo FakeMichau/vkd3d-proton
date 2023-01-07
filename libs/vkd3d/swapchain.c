@@ -725,6 +725,8 @@ static void dxgi_vk_swap_chain_present_callback(void *chain);
 static HRESULT STDMETHODCALLTYPE dxgi_vk_swap_chain_Present(IDXGIVkSwapChain *iface, UINT SyncInterval, UINT PresentFlags, const DXGI_PRESENT_PARAMETERS *pPresentParameters)
 {
     struct dxgi_vk_swap_chain *chain = impl_from_IDXGIVkSwapChain(iface);
+    struct vkd3d_lfx2_vtable *lfx2 = vkd3d_lfx2_get_vtable();
+    struct vkd3d_lfx2_context *lfx2_context = &chain->queue->device->lfx2_context;
     struct dxgi_vk_swap_chain_present_request *request;
     TRACE("iface %p, SyncInterval %u, PresentFlags #%x, pPresentParameters %p.\n",
             iface, SyncInterval, PresentFlags, pPresentParameters);
@@ -734,6 +736,22 @@ static HRESULT STDMETHODCALLTYPE dxgi_vk_swap_chain_Present(IDXGIVkSwapChain *if
         return DXGI_STATUS_OCCLUDED;
     if (PresentFlags & DXGI_PRESENT_TEST)
         return S_OK;
+
+    pthread_mutex_lock(&lfx2_context->current_implicit_frame_lock);
+    if (!lfx2_context->current_implicit_frame)
+    {
+        lfx2_context->current_implicit_frame = lfx2->FrameDequeueImplicit(lfx2_context->implicit_context, true);
+        if (lfx2_context->current_implicit_frame) {
+            lfx2->Dx12ContextBeginFrame(lfx2_context->dx12_context, lfx2_context->current_implicit_frame);
+        }
+    }
+    if (lfx2_context->current_implicit_frame)
+    {
+        lfx2->Dx12ContextEndFrame(lfx2_context->dx12_context, lfx2_context->current_implicit_frame);
+        lfx2->FrameRelease(lfx2_context->current_implicit_frame);
+        lfx2_context->current_implicit_frame = NULL;
+    }
+    pthread_mutex_unlock(&lfx2_context->current_implicit_frame_lock);
 
     /* If we missed the event signal last frame, we have to wait for it now.
      * Otherwise, we end up in a floating state where our waits and thread signals might not stay in sync anymore. */
@@ -1281,6 +1299,7 @@ static void dxgi_vk_swap_chain_recreate_swapchain_in_present_task(struct dxgi_vk
     const struct vkd3d_vk_device_procs *vk_procs = &chain->queue->device->vk_procs;
     VkPhysicalDevice vk_physical_device = chain->queue->device->vk_physical_device;
     VkDevice vk_device = chain->queue->device->vk_device;
+    struct vkd3d_lfx2_vtable *lfx2 = vkd3d_lfx2_get_vtable();
     VkCommandPoolCreateInfo command_pool_create_info;
     VkSwapchainCreateInfoKHR swapchain_create_info;
     VkSurfaceCapabilitiesKHR surface_caps;
@@ -1298,6 +1317,9 @@ static void dxgi_vk_swap_chain_recreate_swapchain_in_present_task(struct dxgi_vk
     /* Don't bother if we've observed ERROR_SURFACE_LOST. */
     if (chain->present.is_surface_lost)
         return;
+
+    if (lfx2)
+        lfx2->ImplicitContextReset(chain->queue->device->lfx2_context.implicit_context);
 
     /* If we fail to query formats we are hosed, treat it as a SURFACE_LOST scenario. */
     if (!dxgi_vk_swap_chain_update_formats(chain))
