@@ -56,12 +56,14 @@ interface ID3D12DXVKInteropDevice : IUnknown
 }
 
 [
-    uuid(0096227d-5494-4e19-9686-4f816fc36345),
+    uuid(851a9f0f-5da0-4850-b563-a7bbc414f4e6),
     object,
     local,
     pointer_default(unique)
 ]
-interface ID3D12DeviceLfx2 : IUnknown
+interface ID3DLfx2ExtDevice : IUnknown
 {
-    void EnqueueFrameLFX2(UINT64 *out_timestamp, void *out_frame);
+    void MarkRenderStart(void *frame);
+    void MarkRenderEnd(void *frame);
+    void ImplicitBeginFrame(UINT64 *out_timestamp, void *out_frame);
 }

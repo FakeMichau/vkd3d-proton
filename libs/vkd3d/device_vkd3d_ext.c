@@ -232,31 +232,31 @@ CONST_VTBL struct ID3D12DeviceExtVtbl d3d12_device_vkd3d_ext_vtbl =
     d3d12_device_vkd3d_ext_CaptureUAVInfo
 };
 
-static inline struct d3d12_device *d3d12_device_from_ID3D12DeviceLfx2(ID3D12DeviceLfx2 *iface)
+static inline struct d3d12_device *d3d12_device_from_ID3D12DeviceLfx2(d3d12_device_lfx2_ext_iface *iface)
 {
     return CONTAINING_RECORD(iface, struct d3d12_device, ID3D12DeviceLfx2_iface);
 }
 
-ULONG STDMETHODCALLTYPE d3d12_device_lfx2_ext_AddRef(ID3D12DeviceLfx2 *iface)
+ULONG STDMETHODCALLTYPE d3d12_device_lfx2_ext_AddRef(d3d12_device_lfx2_ext_iface *iface)
 {
     struct d3d12_device *device = d3d12_device_from_ID3D12DeviceLfx2(iface);
     return d3d12_device_add_ref(device);
 }
 
-static ULONG STDMETHODCALLTYPE d3d12_device_lfx2_ext_Release(ID3D12DeviceLfx2 *iface)
+static ULONG STDMETHODCALLTYPE d3d12_device_lfx2_ext_Release(d3d12_device_lfx2_ext_iface *iface)
 {
     struct d3d12_device *device = d3d12_device_from_ID3D12DeviceLfx2(iface);
     return d3d12_device_release(device);
 }
 
-static HRESULT STDMETHODCALLTYPE d3d12_device_lfx2_ext_QueryInterface(ID3D12DeviceLfx2 *iface, REFIID iid, void **out)
+static HRESULT STDMETHODCALLTYPE d3d12_device_lfx2_ext_QueryInterface(d3d12_device_lfx2_ext_iface *iface, REFIID iid, void **out)
 {
     struct d3d12_device *device = d3d12_device_from_ID3D12DeviceLfx2(iface);
     TRACE("iface %p, iid %s, out %p.\n", iface, debugstr_guid(iid), out);
     return d3d12_device_QueryInterface(&device->ID3D12Device_iface, iid, out);
 }
 
-static void STDMETHODCALLTYPE d3d12_device_lfx2_ext_EnqueueFrameLFX2(ID3D12DeviceLfx2 *iface, UINT64 *out_timestamp,
+static void STDMETHODCALLTYPE d3d12_device_lfx2_ext_ImplicitBeginFrame(d3d12_device_lfx2_ext_iface *iface, UINT64 *out_timestamp,
         void *out_frame)
 {
     struct d3d12_device *device = d3d12_device_from_ID3D12DeviceLfx2(iface);
@@ -265,7 +265,21 @@ static void STDMETHODCALLTYPE d3d12_device_lfx2_ext_EnqueueFrameLFX2(ID3D12Devic
     *(lfx2Frame**)out_frame = lfx2->FrameCreateImplicit(device->lfx2_context.implicit_context, out_timestamp);
 }
 
-CONST_VTBL struct ID3D12DeviceLfx2Vtbl d3d12_device_lfx2_ext_vtbl =
+static void STDMETHODCALLTYPE d3d12_device_lfx2_ext_MarkRenderStart(d3d12_device_lfx2_ext_iface *iface, void *frame)
+{
+    struct d3d12_device *device = d3d12_device_from_ID3D12DeviceLfx2(iface);
+    struct vkd3d_lfx2_vtable *lfx2 = vkd3d_lfx2_get_vtable();
+    lfx2->Dx12ContextBeginFrame(device->lfx2_context.dx12_context, (lfx2Frame*)frame);
+}
+
+static void STDMETHODCALLTYPE d3d12_device_lfx2_ext_MarkRenderEnd(d3d12_device_lfx2_ext_iface *iface, void *frame)
+{
+    struct d3d12_device *device = d3d12_device_from_ID3D12DeviceLfx2(iface);
+    struct vkd3d_lfx2_vtable *lfx2 = vkd3d_lfx2_get_vtable();
+    lfx2->Dx12ContextEndFrame(device->lfx2_context.dx12_context, (lfx2Frame*)frame);
+}
+
+CONST_VTBL struct ID3DLfx2ExtDeviceVtbl d3d12_device_lfx2_ext_vtbl =
 {
     /* IUnknown methods */
     d3d12_device_lfx2_ext_QueryInterface,
@@ -273,7 +287,9 @@ CONST_VTBL struct ID3D12DeviceLfx2Vtbl d3d12_device_lfx2_ext_vtbl =
     d3d12_device_lfx2_ext_Release,
 
     /* ID3D12DeviceLfx2 methods */
-    d3d12_device_lfx2_ext_EnqueueFrameLFX2,
+    d3d12_device_lfx2_ext_MarkRenderStart,
+    d3d12_device_lfx2_ext_MarkRenderEnd,
+    d3d12_device_lfx2_ext_ImplicitBeginFrame,
 };
 
 static inline struct d3d12_device *d3d12_device_from_ID3D12DXVKInteropDevice(ID3D12DXVKInteropDevice *iface)
