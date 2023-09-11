@@ -2662,7 +2662,7 @@ struct d3d12_command_list_iteration
     struct d3d12_command_list_iteration_indirect_meta indirect_meta;
 };
 
-#define VKD3D_MAX_COMMAND_LIST_SEQUENCES 4
+#define VKD3D_MAX_COMMAND_LIST_SEQUENCES 2
 
 struct d3d12_command_list_sequence
 {
