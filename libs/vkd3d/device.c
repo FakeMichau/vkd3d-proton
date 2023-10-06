@@ -2909,13 +2909,8 @@ void d3d12_device_return_scratch_buffer(struct d3d12_device *device, enum vkd3d_
     struct d3d12_device_scratch_pool *pool = &device->scratch_pools[kind];
     pthread_mutex_lock(&device->mutex);
 
-<<<<<<< HEAD
-    if (scratch->allocation.resource.size == VKD3D_SCRATCH_BUFFER_SIZE &&
-        pool->scratch_buffer_count < VKD3D_SCRATCH_BUFFER_COUNT)
-=======
     if (scratch->allocation.resource.size == pool->block_size &&
             pool->scratch_buffer_count < pool->scratch_buffer_size)
->>>>>>> upstream/master
     {
         pool->scratch_buffers[pool->scratch_buffer_count++] = *scratch;
         if (pool->scratch_buffer_count > pool->high_water_mark)
