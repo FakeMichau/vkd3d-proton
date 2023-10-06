@@ -1365,10 +1365,12 @@ static void vkd3d_physical_device_info_apply_workarounds(struct vkd3d_physical_d
             /* RADV's internal memory cache implementation (pipelineCache == VK_NULL_HANDLE)
              * is currently bugged and will bloat indefinitely.
              * Can be removed when RADV is fixed. */
-            if (info->vulkan_1_2_properties.driverID == VK_DRIVER_ID_MESA_RADV)
+            if (info->vulkan_1_2_properties.driverID == VK_DRIVER_ID_MESA_RADV &&
+                    info->properties2.properties.driverVersion < VK_MAKE_VERSION(23, 2, 0))
             {
                 if (vkd3d_config_flags & VKD3D_CONFIG_FLAG_CURB_MEMORY_PSO_CACHE)
                 {
+                    INFO("Enabling CURB_MEMORY_PSO_CACHE workaround on RADV < 23.2.\n");
                     info->workarounds.force_dummy_pipeline_cache = true;
                 }
                 else if (info->properties2.properties.vendorID == 0x1002 &&
@@ -2873,8 +2875,12 @@ HRESULT d3d12_device_get_scratch_buffer(struct d3d12_device *device, enum vkd3d_
     struct vkd3d_scratch_buffer *candidate;
     size_t i;
 
-    if (min_size > VKD3D_SCRATCH_BUFFER_SIZE)
+    if (min_size > pool->block_size)
+    {
+        FIXME("Requesting scratch buffer kind %u larger than limit (%"PRIu64" > %u). Expect bad performance.\n",
+                kind, min_size, pool->block_size);
         return d3d12_device_create_scratch_buffer(device, kind, min_size, memory_types, scratch);
+    }
 
     pthread_mutex_lock(&device->mutex);
 
@@ -2894,7 +2900,7 @@ HRESULT d3d12_device_get_scratch_buffer(struct d3d12_device *device, enum vkd3d_
     }
 
     pthread_mutex_unlock(&device->mutex);
-    return d3d12_device_create_scratch_buffer(device, kind, VKD3D_SCRATCH_BUFFER_SIZE, memory_types, scratch);
+    return d3d12_device_create_scratch_buffer(device, kind, pool->block_size, memory_types, scratch);
 }
 
 void d3d12_device_return_scratch_buffer(struct d3d12_device *device, enum vkd3d_scratch_pool_kind kind,
@@ -2903,16 +2909,33 @@ void d3d12_device_return_scratch_buffer(struct d3d12_device *device, enum vkd3d_
     struct d3d12_device_scratch_pool *pool = &device->scratch_pools[kind];
     pthread_mutex_lock(&device->mutex);
 
+<<<<<<< HEAD
     if (scratch->allocation.resource.size == VKD3D_SCRATCH_BUFFER_SIZE &&
         pool->scratch_buffer_count < VKD3D_SCRATCH_BUFFER_COUNT)
+=======
+    if (scratch->allocation.resource.size == pool->block_size &&
+            pool->scratch_buffer_count < pool->scratch_buffer_size)
+>>>>>>> upstream/master
     {
         pool->scratch_buffers[pool->scratch_buffer_count++] = *scratch;
+        if (pool->scratch_buffer_count > pool->high_water_mark)
+        {
+            pool->high_water_mark = pool->scratch_buffer_count;
+
+            /* Warn if we're starting to fill up. Potential performance issue afoot. */
+            if (pool->high_water_mark > pool->scratch_buffer_size / 2)
+            {
+                WARN("New high water mark: %u scratch buffers in flight for kind %u (%"PRIu64" bytes).\n",
+                        pool->high_water_mark, kind, pool->high_water_mark * pool->block_size);
+            }
+        }
         pthread_mutex_unlock(&device->mutex);
     }
     else
     {
         pthread_mutex_unlock(&device->mutex);
         d3d12_device_destroy_scratch_buffer(device, scratch);
+        WARN("Too many scratch buffers in flight, cannot recycle kind %u.\n", kind);
     }
 }
 
@@ -3519,11 +3542,8 @@ bool d3d12_device_is_uma(struct d3d12_device *device, bool *coherent)
 
 static HRESULT d3d12_device_get_format_support(struct d3d12_device *device, D3D12_FEATURE_DATA_FORMAT_SUPPORT *data)
 {
-    const struct vkd3d_vk_device_procs *vk_procs = &device->vk_procs;
     VkFormatFeatureFlags2 image_features;
-    VkFormatProperties3 properties3;
     const struct vkd3d_format *format;
-    VkFormatProperties2 properties;
 
     data->Support1 = D3D12_FORMAT_SUPPORT1_NONE;
     data->Support2 = D3D12_FORMAT_SUPPORT2_NONE;
@@ -3535,20 +3555,11 @@ static HRESULT d3d12_device_get_format_support(struct d3d12_device *device, D3D1
         return E_INVALIDARG;
     }
 
-    properties.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2;
-    properties.pNext = NULL;
+    image_features = format->vk_format_features;
 
-    properties3.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3;
-    properties3.pNext = NULL;
-    vk_prepend_struct(&properties, &properties3);
-
-    VK_CALL(vkGetPhysicalDeviceFormatProperties2(device->vk_physical_device, format->vk_format, &properties));
-
-    image_features = properties3.linearTilingFeatures | properties3.optimalTilingFeatures;
-
-    if (properties.formatProperties.bufferFeatures)
+    if (format->vk_format_features_buffer)
         data->Support1 |= D3D12_FORMAT_SUPPORT1_BUFFER;
-    if (properties.formatProperties.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT)
+    if (format->vk_format_features_buffer & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT)
         data->Support1 |= D3D12_FORMAT_SUPPORT1_IA_VERTEX_BUFFER;
     if (data->Format == DXGI_FORMAT_R16_UINT || data->Format == DXGI_FORMAT_R32_UINT)
         data->Support1 |= D3D12_FORMAT_SUPPORT1_IA_INDEX_BUFFER;
@@ -7866,6 +7877,31 @@ extern CONST_VTBL struct ID3D12DeviceExtVtbl d3d12_device_vkd3d_ext_vtbl;
 extern CONST_VTBL struct ID3D12DXVKInteropDeviceVtbl d3d12_dxvk_interop_device_vtbl;
 extern CONST_VTBL struct ID3DLfx2ExtDeviceVtbl d3d12_device_lfx2_ext_vtbl;
 
+static void vkd3d_scratch_pool_init(struct d3d12_device *device)
+{
+    unsigned int i;
+
+    for (i = 0; i < VKD3D_SCRATCH_POOL_KIND_COUNT; i++)
+    {
+        device->scratch_pools[i].block_size = VKD3D_SCRATCH_BUFFER_SIZE_DEFAULT;
+        device->scratch_pools[i].scratch_buffer_size = VKD3D_SCRATCH_BUFFER_COUNT_DEFAULT;
+    }
+
+    if ((vkd3d_config_flags & VKD3D_CONFIG_FLAG_REQUIRES_COMPUTE_INDIRECT_TEMPLATES) &&
+            device->device_info.device_generated_commands_compute_features_nv.deviceGeneratedCompute &&
+            device->device_info.vulkan_1_2_properties.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY)
+    {
+        /* DGCC preprocess buffers are gigantic on NV. Starfield requires 27 MB for 4096 dispatches ... */
+        device->scratch_pools[VKD3D_SCRATCH_POOL_KIND_INDIRECT_PREPROCESS].block_size =
+                VKD3D_SCRATCH_BUFFER_SIZE_DGCC_PREPROCESS_NV;
+    }
+
+    /* DGC tends to be pretty spammy with indirect buffers.
+     * Tuned for Starfield which is the "worst case scenario" so far. */
+    device->scratch_pools[VKD3D_SCRATCH_POOL_KIND_INDIRECT_PREPROCESS].scratch_buffer_size =
+            VKD3D_SCRATCH_BUFFER_COUNT_INDIRECT_PREPROCESS;
+}
+
 static HRESULT d3d12_device_init(struct d3d12_device *device,
                                  struct vkd3d_instance *instance, const struct vkd3d_device_create_info *create_info)
 {
@@ -7959,6 +7995,8 @@ static HRESULT d3d12_device_init(struct d3d12_device *device,
 
     if (FAILED(hr = vkd3d_shader_debug_ring_init(&device->debug_ring, device)))
         goto out_cleanup_meta_ops;
+
+    vkd3d_scratch_pool_init(device);
 
 #ifdef VKD3D_ENABLE_BREADCRUMBS
     if (vkd3d_config_flags & VKD3D_CONFIG_FLAG_BREADCRUMBS)
