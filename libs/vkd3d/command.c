@@ -6324,7 +6324,9 @@ static void d3d12_command_list_update_dynamic_state(struct d3d12_command_list *l
     if (dyn_state->dirty_flags & VKD3D_DYNAMIC_STATE_STENCIL_REFERENCE)
     {
         VK_CALL(vkCmdSetStencilReference(list->cmd.vk_command_buffer,
-                VK_STENCIL_FRONT_AND_BACK, dyn_state->stencil_reference));
+                VK_STENCIL_FACE_FRONT_BIT, dyn_state->stencil_front.reference));
+        VK_CALL(vkCmdSetStencilReference(list->cmd.vk_command_buffer,
+                VK_STENCIL_FACE_BACK_BIT, dyn_state->stencil_back.reference));
     }
 
     if (dyn_state->dirty_flags & VKD3D_DYNAMIC_STATE_DEPTH_WRITE_ENABLE)
@@ -6336,15 +6338,26 @@ static void d3d12_command_list_update_dynamic_state(struct d3d12_command_list *l
     if (dyn_state->dirty_flags & VKD3D_DYNAMIC_STATE_STENCIL_WRITE_MASK)
     {
         /* Binding read-only DSV for stencil disable stencil writes. */
-        VK_CALL(vkCmdSetStencilWriteMask(list->cmd.vk_command_buffer,
-                VK_STENCIL_FRONT_AND_BACK,
-                (dyn_state->dsv_plane_write_enable & (1u << 1)) ? dyn_state->stencil_write_mask : 0));
+        VK_CALL(vkCmdSetStencilWriteMask(list->cmd.vk_command_buffer, VK_STENCIL_FACE_FRONT_BIT,
+                (dyn_state->dsv_plane_write_enable & (1u << 1)) ? dyn_state->stencil_front.write_mask : 0));
+        VK_CALL(vkCmdSetStencilWriteMask(list->cmd.vk_command_buffer, VK_STENCIL_FACE_BACK_BIT,
+                (dyn_state->dsv_plane_write_enable & (1u << 1)) ? dyn_state->stencil_back.write_mask : 0));
     }
 
     if (dyn_state->dirty_flags & VKD3D_DYNAMIC_STATE_DEPTH_BOUNDS)
     {
         VK_CALL(vkCmdSetDepthBounds(list->cmd.vk_command_buffer,
                 dyn_state->min_depth_bounds, dyn_state->max_depth_bounds));
+    }
+
+    if (dyn_state->dirty_flags & VKD3D_DYNAMIC_STATE_DEPTH_BIAS)
+    {
+        VK_CALL(vkCmdSetDepthBiasEnable(list->cmd.vk_command_buffer,
+                dyn_state->depth_bias.constant_factor != 0.0f ||
+                dyn_state->depth_bias.slope_factor != 0.0f));
+        VK_CALL(vkCmdSetDepthBias(list->cmd.vk_command_buffer,
+                dyn_state->depth_bias.constant_factor, dyn_state->depth_bias.clamp,
+                dyn_state->depth_bias.slope_factor));
     }
 
     if (dyn_state->dirty_flags & VKD3D_DYNAMIC_STATE_TOPOLOGY)
@@ -6361,10 +6374,8 @@ static void d3d12_command_list_update_dynamic_state(struct d3d12_command_list *l
 
     if (dyn_state->dirty_flags & VKD3D_DYNAMIC_STATE_PRIMITIVE_RESTART)
     {
-        /* The primitive restart dynamic state is only present if the PSO
-         * has a strip cut value, so we only need to check if the
-         * current primitive topology is a strip type. */
         VK_CALL(vkCmdSetPrimitiveRestartEnable(list->cmd.vk_command_buffer,
+                dyn_state->index_buffer_strip_cut_value != D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED &&
                 vk_primitive_topology_supports_restart(dyn_state->vk_primitive_topology)));
     }
 
@@ -8427,9 +8438,10 @@ static void STDMETHODCALLTYPE d3d12_command_list_OMSetStencilRef(d3d12_command_l
 
     TRACE("iface %p, stencil_ref %u.\n", iface, stencil_ref);
 
-    if (dyn_state->stencil_reference != stencil_ref)
+    if (dyn_state->stencil_front.reference != stencil_ref || dyn_state->stencil_back.reference != stencil_ref)
     {
-        dyn_state->stencil_reference = stencil_ref;
+        dyn_state->stencil_front.reference = stencil_ref;
+        dyn_state->stencil_back.reference = stencil_ref;
         dyn_state->dirty_flags |= VKD3D_DYNAMIC_STATE_STENCIL_REFERENCE;
     }
 }
@@ -8465,7 +8477,6 @@ static void STDMETHODCALLTYPE d3d12_command_list_SetPipelineState(d3d12_command_
     struct d3d12_pipeline_state *state = impl_from_ID3D12PipelineState(pipeline_state);
     struct d3d12_command_list *list = impl_from_ID3D12GraphicsCommandList(iface);
     struct vkd3d_pipeline_bindings *bindings;
-    uint32_t stencil_write_mask;
     unsigned int i;
 
     TRACE("iface %p, pipeline_state %p.\n", iface, pipeline_state);
@@ -8573,6 +8584,31 @@ static void STDMETHODCALLTYPE d3d12_command_list_SetPipelineState(d3d12_command_
     vkd3d_renderdoc_command_list_check_capture(list, state);
 #endif
 
+    if (state && state->pipeline_type != VKD3D_PIPELINE_TYPE_COMPUTE)
+    {
+        /* For any optionally dynamic state, we need to re-apply the corresponding static state
+         * that the PSO was created with. If the same state was not dynamic in the previous
+         * pipeline, the state implicitly gets marked as dirty anyway so we can ignore that here. */
+        if ((state->graphics.explicit_dynamic_states & VKD3D_DYNAMIC_STATE_DEPTH_BIAS) &&
+                (list->dynamic_state.depth_bias.constant_factor != state->graphics.rs_desc.depthBiasConstantFactor ||
+                list->dynamic_state.depth_bias.clamp != state->graphics.rs_desc.depthBiasClamp ||
+                list->dynamic_state.depth_bias.slope_factor != state->graphics.rs_desc.depthBiasSlopeFactor))
+        {
+            list->dynamic_state.depth_bias.constant_factor = state->graphics.rs_desc.depthBiasConstantFactor;
+            list->dynamic_state.depth_bias.clamp = state->graphics.rs_desc.depthBiasClamp;
+            list->dynamic_state.depth_bias.slope_factor = state->graphics.rs_desc.depthBiasSlopeFactor;
+            list->dynamic_state.dirty_flags |= VKD3D_DYNAMIC_STATE_DEPTH_BIAS;
+        }
+
+        /* Primitive restart is almost always dynamic since it depends on the dynamic topology,
+         * so we cannot rely on it being set in the explicit dynamic state flags. */
+        if (list->dynamic_state.index_buffer_strip_cut_value != state->graphics.index_buffer_strip_cut_value)
+        {
+            list->dynamic_state.index_buffer_strip_cut_value = state->graphics.index_buffer_strip_cut_value;
+            list->dynamic_state.dirty_flags |= VKD3D_DYNAMIC_STATE_PRIMITIVE_RESTART;
+        }
+    }
+
     if (list->state == state)
         return;
 
@@ -8604,10 +8640,11 @@ static void STDMETHODCALLTYPE d3d12_command_list_SetPipelineState(d3d12_command_
 
     if (state->pipeline_type != VKD3D_PIPELINE_TYPE_COMPUTE)
     {
-        stencil_write_mask = state->graphics.ds_desc.front.writeMask;
-        if (list->dynamic_state.stencil_write_mask != stencil_write_mask)
+        if (list->dynamic_state.stencil_front.write_mask != state->graphics.ds_desc.front.writeMask ||
+                list->dynamic_state.stencil_back.write_mask != state->graphics.ds_desc.back.writeMask)
         {
-            list->dynamic_state.stencil_write_mask = stencil_write_mask;
+            list->dynamic_state.stencil_front.write_mask = state->graphics.ds_desc.front.writeMask;
+            list->dynamic_state.stencil_back.write_mask = state->graphics.ds_desc.back.writeMask;
             list->dynamic_state.dirty_flags |= VKD3D_DYNAMIC_STATE_STENCIL_WRITE_MASK;
         }
     }
@@ -8618,7 +8655,7 @@ VkImageLayout vk_image_layout_from_d3d12_resource_state(
 {
     /* Simultaneous access is always general, until we're forced to treat it differently in
      * a transfer, render pass, or similar. */
-    if (resource->flags & (VKD3D_RESOURCE_LINEAR_STAGING_COPY | VKD3D_RESOURCE_SIMULTANEOUS_ACCESS))
+    if (resource->flags & VKD3D_RESOURCE_GENERAL_LAYOUT)
         return VK_IMAGE_LAYOUT_GENERAL;
 
     /* Anything generic read-related uses common layout since we get implicit promotion and decay. */
@@ -8663,7 +8700,7 @@ static VkImageLayout vk_image_layout_from_d3d12_barrier(
 
     /* Simultaneous access is always general, until we're forced to treat it differently in
      * a transfer, render pass, or similar. */
-    if (resource->flags & (VKD3D_RESOURCE_LINEAR_STAGING_COPY | VKD3D_RESOURCE_SIMULTANEOUS_ACCESS))
+    if (resource->flags & VKD3D_RESOURCE_GENERAL_LAYOUT)
         return VK_IMAGE_LAYOUT_GENERAL;
 
     switch (layout)
@@ -13955,20 +13992,50 @@ static void STDMETHODCALLTYPE d3d12_command_list_Barrier(d3d12_command_list_ifac
 
 static void STDMETHODCALLTYPE d3d12_command_list_OMSetFrontAndBackStencilRef(d3d12_command_list_iface *iface, UINT FrontStencilRef, UINT BackStencilRef)
 {
-    FIXME("iface %p, FrontStencilRef %u, BackStencilRef %u stub!\n", 
+    struct d3d12_command_list *list = impl_from_ID3D12GraphicsCommandList(iface);
+    struct vkd3d_dynamic_state *dyn_state = &list->dynamic_state;
+
+    TRACE("iface %p, FrontStencilRef %u, BackStencilRef %u.\n",
         iface, FrontStencilRef, BackStencilRef);
+
+    if (dyn_state->stencil_front.reference != FrontStencilRef || dyn_state->stencil_back.reference != BackStencilRef)
+    {
+        dyn_state->stencil_front.reference = FrontStencilRef;
+        dyn_state->stencil_back.reference = BackStencilRef;
+        dyn_state->dirty_flags |= VKD3D_DYNAMIC_STATE_STENCIL_REFERENCE;
+    }
 }
 
 static void STDMETHODCALLTYPE d3d12_command_list_RSSetDepthBias(d3d12_command_list_iface *iface, FLOAT DepthBias, FLOAT DepthBiasClamp, FLOAT SlopeScaledDepthBias)
 {
-    FIXME("iface %p, DepthBias %f, DepthBiasClamp %f, SlopeScaledDepthBias %f stub!\n", 
+    struct d3d12_command_list *list = impl_from_ID3D12GraphicsCommandList(iface);
+    struct vkd3d_dynamic_state *dyn_state = &list->dynamic_state;
+
+    TRACE("iface %p, DepthBias %f, DepthBiasClamp %f, SlopeScaledDepthBias %f.\n",
         iface, DepthBias, DepthBiasClamp, SlopeScaledDepthBias);
+
+    if (dyn_state->depth_bias.constant_factor != DepthBias || dyn_state->depth_bias.clamp != DepthBiasClamp ||
+            dyn_state->depth_bias.slope_factor != SlopeScaledDepthBias)
+    {
+        dyn_state->depth_bias.constant_factor = DepthBias;
+        dyn_state->depth_bias.clamp = DepthBiasClamp;
+        dyn_state->depth_bias.slope_factor = SlopeScaledDepthBias;
+        dyn_state->dirty_flags |= VKD3D_DYNAMIC_STATE_DEPTH_BIAS;
+    }
 }
 
 static void STDMETHODCALLTYPE d3d12_command_list_IASetIndexBufferStripCutValue(d3d12_command_list_iface *iface, D3D12_INDEX_BUFFER_STRIP_CUT_VALUE IBStripCutValue)
 {
-    FIXME("iface %p, IBStripCutValue %u stub!\n", 
-        iface, IBStripCutValue);
+    struct d3d12_command_list *list = impl_from_ID3D12GraphicsCommandList(iface);
+    struct vkd3d_dynamic_state *dyn_state = &list->dynamic_state;
+
+    TRACE("iface %p, IBStripCutValue %u.\n", iface, IBStripCutValue);
+
+    if (dyn_state->index_buffer_strip_cut_value != IBStripCutValue)
+    {
+        dyn_state->index_buffer_strip_cut_value = IBStripCutValue;
+        dyn_state->dirty_flags |= VKD3D_DYNAMIC_STATE_PRIMITIVE_RESTART;
+    }
 }
 
 #define VKD3D_DECLARE_D3D12_GRAPHICS_COMMAND_LIST_VARIANT(name, set_table_variant) \

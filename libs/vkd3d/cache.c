@@ -2623,8 +2623,7 @@ void vkd3d_pipeline_cache_compat_from_state_desc(struct vkd3d_pipeline_cache_com
         HF32(desc->rasterizer_state.DepthBiasClamp);
         HF32(desc->rasterizer_state.SlopeScaledDepthBias);
         H32(desc->rasterizer_state.DepthClipEnable);
-        H32(desc->rasterizer_state.MultisampleEnable);
-        H32(desc->rasterizer_state.AntialiasedLineEnable);
+        H32(desc->rasterizer_state.LineRasterizationMode);
         H32(desc->rasterizer_state.ForcedSampleCount);
         H32(desc->rasterizer_state.ConservativeRaster);
 
@@ -2633,16 +2632,18 @@ void vkd3d_pipeline_cache_compat_from_state_desc(struct vkd3d_pipeline_cache_com
         H32(desc->depth_stencil_state.DepthWriteMask);
         H32(desc->depth_stencil_state.DepthFunc);
         H32(desc->depth_stencil_state.StencilEnable);
-        H32(desc->depth_stencil_state.StencilReadMask);
-        H32(desc->depth_stencil_state.StencilWriteMask);
         H32(desc->depth_stencil_state.FrontFace.StencilFailOp);
         H32(desc->depth_stencil_state.FrontFace.StencilDepthFailOp);
         H32(desc->depth_stencil_state.FrontFace.StencilPassOp);
         H32(desc->depth_stencil_state.FrontFace.StencilFunc);
+        H32(desc->depth_stencil_state.FrontFace.StencilReadMask);
+        H32(desc->depth_stencil_state.FrontFace.StencilWriteMask);
         H32(desc->depth_stencil_state.BackFace.StencilFailOp);
         H32(desc->depth_stencil_state.BackFace.StencilDepthFailOp);
         H32(desc->depth_stencil_state.BackFace.StencilPassOp);
         H32(desc->depth_stencil_state.BackFace.StencilFunc);
+        H32(desc->depth_stencil_state.BackFace.StencilReadMask);
+        H32(desc->depth_stencil_state.BackFace.StencilWriteMask);
         H32(desc->depth_stencil_state.DepthBoundsTestEnable);
 
         /* Input layout. */

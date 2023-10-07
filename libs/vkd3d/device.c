@@ -4229,10 +4229,13 @@ static HRESULT STDMETHODCALLTYPE d3d12_device_CheckFeatureSupport(d3d12_device_i
             return E_INVALIDARG;
         }
 
-        data->TriangleFanSupported = FALSE;
-        data->DynamicIndexBufferStripCutSupported = FALSE;
-        return S_OK;
-    }
+            *data = device->d3d12_caps.options15;
+
+            TRACE("TriangleFanSupported %u\n", data->TriangleFanSupported);
+            TRACE("DynamicIndexBufferStripCutSupported %u\n", data->DynamicIndexBufferStripCutSupported);
+
+            return S_OK;
+        }
 
     case D3D12_FEATURE_D3D12_OPTIONS16:
     {
@@ -4244,10 +4247,73 @@ static HRESULT STDMETHODCALLTYPE d3d12_device_CheckFeatureSupport(d3d12_device_i
             return E_INVALIDARG;
         }
 
-        data->DynamicDepthBiasSupported = FALSE;
-        data->Reserved = FALSE;
-        return S_OK;
-    }
+            *data = device->d3d12_caps.options16;
+
+            TRACE("DynamicDepthBiasSupported %u\n", data->DynamicDepthBiasSupported);
+            TRACE("GPUUploadHeapSupported %u\n", data->GPUUploadHeapSupported);
+
+            return S_OK;
+        }
+
+        case D3D12_FEATURE_D3D12_OPTIONS17:
+        {
+            D3D12_FEATURE_DATA_D3D12_OPTIONS17 *data = feature_data;
+
+            if (feature_data_size != sizeof(*data))
+            {
+                WARN("Invalid size %u.\n", feature_data_size);
+                return E_INVALIDARG;
+            }
+
+            *data = device->d3d12_caps.options17;
+
+            TRACE("NonNormalizedCoordinateSamplersSupported %u\n", data->NonNormalizedCoordinateSamplersSupported);
+            TRACE("ManualWriteTrackingResourceSupported %u\n", data->ManualWriteTrackingResourceSupported);
+
+            return S_OK;
+        }
+
+        case D3D12_FEATURE_D3D12_OPTIONS18:
+        {
+            D3D12_FEATURE_DATA_D3D12_OPTIONS18 *data = feature_data;
+
+            if (feature_data_size != sizeof(*data))
+            {
+                WARN("Invalid size %u.\n", feature_data_size);
+                return E_INVALIDARG;
+            }
+
+            *data = device->d3d12_caps.options18;
+
+            TRACE("RenderPassesValid %u\n", data->RenderPassesValid);
+
+            return S_OK;
+        }
+
+        case D3D12_FEATURE_D3D12_OPTIONS19:
+        {
+            D3D12_FEATURE_DATA_D3D12_OPTIONS19 *data = feature_data;
+
+            if (feature_data_size != sizeof(*data))
+            {
+                WARN("Invalid size %u.\n", feature_data_size);
+                return E_INVALIDARG;
+            }
+
+            *data = device->d3d12_caps.options19;
+
+            TRACE("MismatchingOutputDimensionsSupported %u\n", data->MismatchingOutputDimensionsSupported);
+            TRACE("SupportedSampleCountsWithNoOutputs %#x\n", data->SupportedSampleCountsWithNoOutputs);
+            TRACE("PointSamplingAddressesNeverRoundUp %u\n", data->PointSamplingAddressesNeverRoundUp);
+            TRACE("RasterizerDesc2Supported %u\n", data->RasterizerDesc2Supported);
+            TRACE("NarrowQuadrilateralLinesSupported %u\n", data->NarrowQuadrilateralLinesSupported);
+            TRACE("AnisoFilterWithPointMipSupported %u\n", data->AnisoFilterWithPointMipSupported);
+            TRACE("MaxSamplerDescriptorHeapSize %u\n", data->MaxSamplerDescriptorHeapSize);
+            TRACE("MaxSamplerDescriptorHeapSizeWithStaticSamplers %u\n", data->MaxSamplerDescriptorHeapSizeWithStaticSamplers);
+            TRACE("MaxViewDescriptorHeapSize %u\n", data->MaxViewDescriptorHeapSize);
+
+            return S_OK;
+        }
 
     case D3D12_FEATURE_QUERY_META_COMMAND:
     {
@@ -7302,8 +7368,64 @@ static void d3d12_device_caps_init_feature_options14(struct d3d12_device *device
     options14->AdvancedTextureOpsSupported = (vkd3d_config_flags & VKD3D_CONFIG_FLAG_ENABLE_EXPERIMENTAL_FEATURES) &&
                                              device->d3d12_caps.max_shader_model >= D3D_SHADER_MODEL_6_7;
     options14->WriteableMSAATexturesSupported = device->d3d12_caps.max_shader_model >= D3D_SHADER_MODEL_6_7 &&
-                                                device->device_info.features2.features.shaderStorageImageMultisample;
-    options14->IndependentFrontAndBackStencilRefMaskSupported = FALSE;
+            device->device_info.features2.features.shaderStorageImageMultisample;
+    options14->IndependentFrontAndBackStencilRefMaskSupported = TRUE;
+}
+
+static void d3d12_device_caps_init_feature_options15(struct d3d12_device *device)
+{
+    D3D12_FEATURE_DATA_D3D12_OPTIONS15 *options15 = &device->d3d12_caps.options15;
+
+    options15->TriangleFanSupported = TRUE;
+    options15->DynamicIndexBufferStripCutSupported = TRUE;
+}
+
+static void d3d12_device_caps_init_feature_options16(struct d3d12_device *device)
+{
+    D3D12_FEATURE_DATA_D3D12_OPTIONS16 *options16 = &device->d3d12_caps.options16;
+
+    options16->DynamicDepthBiasSupported = TRUE;
+    options16->GPUUploadHeapSupported = FALSE;
+}
+
+static void d3d12_device_caps_init_feature_options17(struct d3d12_device *device)
+{
+    D3D12_FEATURE_DATA_D3D12_OPTIONS17 *options17 = &device->d3d12_caps.options17;
+
+    options17->NonNormalizedCoordinateSamplersSupported = TRUE;
+    /* Debug-only feature, always reported to be false by the runtime */
+    options17->ManualWriteTrackingResourceSupported = FALSE;
+}
+
+static void d3d12_device_caps_init_feature_options18(struct d3d12_device *device)
+{
+    D3D12_FEATURE_DATA_D3D12_OPTIONS18 *options18 = &device->d3d12_caps.options18;
+
+    /* We don't currently support render passes at all */
+    options18->RenderPassesValid = FALSE;
+}
+
+static void d3d12_device_caps_init_feature_options19(struct d3d12_device *device)
+{
+    D3D12_FEATURE_DATA_D3D12_OPTIONS19 *options19 = &device->d3d12_caps.options19;
+
+    /* We trivially support this by not validating resource types in rendering
+     * and computing renderArea to be the intersection of all bound views. */
+    options19->MismatchingOutputDimensionsSupported = TRUE;
+    /* Requires SampleCount > 1 for pipelinesm, not just ForcedSamplecount */
+    options19->SupportedSampleCountsWithNoOutputs = 0x1;
+    /* D3D12 expectations w.r.t. rounding match Vulkan spec */
+    options19->PointSamplingAddressesNeverRoundUp = TRUE;
+    options19->RasterizerDesc2Supported = TRUE;
+    /* We default to a line width of 1.0 anyway */
+    options19->NarrowQuadrilateralLinesSupported = TRUE;
+    options19->AnisoFilterWithPointMipSupported = TRUE;
+    /* Report legacy D3D12 limits for now. Increasing descriptor count limits
+     * would require changing changing descriptor set layouts, and more samplers
+     * need additional considerations w.r.t. Vulkan device limits. */
+    options19->MaxSamplerDescriptorHeapSize = 2048;
+    options19->MaxSamplerDescriptorHeapSizeWithStaticSamplers = 2048;
+    options19->MaxViewDescriptorHeapSize = 1000000;
 }
 
 static void d3d12_device_caps_init_feature_level(struct d3d12_device *device)
@@ -7663,6 +7785,11 @@ static void d3d12_device_caps_init(struct d3d12_device *device)
     d3d12_device_caps_init_feature_options12(device);
     d3d12_device_caps_init_feature_options13(device);
     d3d12_device_caps_init_feature_options14(device);
+    d3d12_device_caps_init_feature_options15(device);
+    d3d12_device_caps_init_feature_options16(device);
+    d3d12_device_caps_init_feature_options17(device);
+    d3d12_device_caps_init_feature_options18(device);
+    d3d12_device_caps_init_feature_options19(device);
     d3d12_device_caps_init_feature_level(device);
 
     d3d12_device_caps_override(device);

@@ -875,7 +875,7 @@ enum vkd3d_resource_flag
     VKD3D_RESOURCE_LINEAR_STAGING_COPY    = (1u << 4),
     VKD3D_RESOURCE_EXTERNAL               = (1u << 5),
     VKD3D_RESOURCE_ACCELERATION_STRUCTURE = (1u << 6),
-    VKD3D_RESOURCE_SIMULTANEOUS_ACCESS    = (1u << 7),
+    VKD3D_RESOURCE_GENERAL_LAYOUT         = (1u << 7),
 };
 
 struct d3d12_sparse_image_region
@@ -1001,8 +1001,8 @@ static inline bool d3d12_resource_is_texture(const struct d3d12_resource *resour
 
 static inline VkImageLayout d3d12_resource_pick_layout(const struct d3d12_resource *resource, VkImageLayout layout)
 {
-    return resource->flags & (VKD3D_RESOURCE_LINEAR_STAGING_COPY | VKD3D_RESOURCE_SIMULTANEOUS_ACCESS) ?
-            resource->common_layout : layout;
+    return resource->flags & VKD3D_RESOURCE_GENERAL_LAYOUT ?
+            VK_IMAGE_LAYOUT_GENERAL : layout;
 }
 
 ULONG d3d12_resource_incref(struct d3d12_resource *resource);
@@ -1817,6 +1817,7 @@ enum vkd3d_dynamic_state_flag
     VKD3D_DYNAMIC_STATE_PATCH_CONTROL_POINTS  = (1 << 9),
     VKD3D_DYNAMIC_STATE_DEPTH_WRITE_ENABLE    = (1 << 10),
     VKD3D_DYNAMIC_STATE_STENCIL_WRITE_MASK    = (1 << 11),
+    VKD3D_DYNAMIC_STATE_DEPTH_BIAS            = (1 << 12),
 };
 
 struct vkd3d_shader_debug_ring_spec_constants
@@ -1966,7 +1967,9 @@ struct d3d12_graphics_pipeline_state
     VkPipelineRasterizationDepthClipStateCreateInfoEXT rs_depth_clip_info;
     VkPipelineRasterizationStateStreamCreateInfoEXT rs_stream_info;
 
-    uint32_t dynamic_state_flags; /* vkd3d_dynamic_state_flag */
+    /* vkd3d_dynamic_state_flag */
+    uint32_t explicit_dynamic_states;
+    uint32_t pipeline_dynamic_states;
 
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline;
@@ -2074,8 +2077,8 @@ struct d3d12_pipeline_state_desc
     D3D12_STREAM_OUTPUT_DESC stream_output;
     D3D12_BLEND_DESC blend_state;
     UINT sample_mask;
-    D3D12_RASTERIZER_DESC rasterizer_state;
-    D3D12_DEPTH_STENCIL_DESC1 depth_stencil_state;
+    D3D12_RASTERIZER_DESC2 rasterizer_state;
+    D3D12_DEPTH_STENCIL_DESC2 depth_stencil_state;
     D3D12_INPUT_LAYOUT_DESC input_layout;
     D3D12_INDEX_BUFFER_STRIP_CUT_VALUE strip_cut_value;
     D3D12_PRIMITIVE_TOPOLOGY_TYPE primitive_topology_type;
@@ -2419,9 +2422,23 @@ struct vkd3d_dynamic_state
     VkRect2D scissors[D3D12_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE];
 
     float blend_constants[4];
-    uint32_t stencil_reference;
-    uint32_t stencil_write_mask;
+
+    struct
+    {
+        uint8_t reference;
+        uint8_t write_mask;
+    } stencil_front, stencil_back;
+
     uint32_t dsv_plane_write_enable;
+
+    struct
+    {
+        float constant_factor;
+        float clamp;
+        float slope_factor;
+    } depth_bias;
+
+    D3D12_INDEX_BUFFER_STRIP_CUT_VALUE index_buffer_strip_cut_value;
 
     float min_depth_bounds;
     float max_depth_bounds;
@@ -4150,6 +4167,11 @@ struct d3d12_caps
     D3D12_FEATURE_DATA_D3D12_OPTIONS12 options12;
     D3D12_FEATURE_DATA_D3D12_OPTIONS13 options13;
     D3D12_FEATURE_DATA_D3D12_OPTIONS14 options14;
+    D3D12_FEATURE_DATA_D3D12_OPTIONS15 options15;
+    D3D12_FEATURE_DATA_D3D12_OPTIONS16 options16;
+    D3D12_FEATURE_DATA_D3D12_OPTIONS17 options17;
+    D3D12_FEATURE_DATA_D3D12_OPTIONS18 options18;
+    D3D12_FEATURE_DATA_D3D12_OPTIONS19 options19;
 
     D3D_FEATURE_LEVEL max_feature_level;
     D3D_SHADER_MODEL max_shader_model;
