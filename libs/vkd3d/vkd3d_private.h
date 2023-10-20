@@ -152,6 +152,7 @@ struct vkd3d_vulkan_info
     bool EXT_pageable_device_local_memory;
     bool EXT_memory_priority;
     bool EXT_dynamic_rendering_unused_attachments;
+    bool EXT_line_rasterization;
     /* AMD device extensions */
     bool AMD_buffer_marker;
     bool AMD_device_coherent_memory;
@@ -1966,6 +1967,7 @@ struct d3d12_graphics_pipeline_state
     VkPipelineRasterizationConservativeStateCreateInfoEXT rs_conservative_info;
     VkPipelineRasterizationDepthClipStateCreateInfoEXT rs_depth_clip_info;
     VkPipelineRasterizationStateStreamCreateInfoEXT rs_stream_info;
+    VkPipelineRasterizationLineStateCreateInfoEXT rs_line_info;
 
     /* vkd3d_dynamic_state_flag */
     uint32_t explicit_dynamic_states;
@@ -2673,6 +2675,7 @@ struct d3d12_command_list_iteration_indirect_meta
 {
     bool need_compute_to_indirect_barrier;
     bool need_compute_to_cbv_barrier;
+    bool need_preprocess_barrier;
 };
 
 struct d3d12_command_list_iteration
@@ -3129,7 +3132,8 @@ struct d3d12_command_signature
             VkBuffer buffer;
             VkDeviceAddress buffer_va;
             struct vkd3d_device_memory_allocation memory;
-            VkIndirectCommandsLayoutNV layout;
+            VkIndirectCommandsLayoutNV layout_implicit;
+            VkIndirectCommandsLayoutNV layout_preprocess;
             uint32_t stride;
             struct vkd3d_execute_indirect_info pipeline;
         } dgc;
@@ -3714,11 +3718,6 @@ struct vkd3d_clear_uav_pipeline
     VkPipeline vk_pipeline;
 };
 
-HRESULT vkd3d_clear_uav_ops_init(struct vkd3d_clear_uav_ops *meta_clear_uav_ops,
-        struct d3d12_device *device);
-void vkd3d_clear_uav_ops_cleanup(struct vkd3d_clear_uav_ops *meta_clear_uav_ops,
-        struct d3d12_device *device);
-
 struct vkd3d_copy_image_args
 {
     VkOffset2D offset;
@@ -3761,11 +3760,6 @@ struct vkd3d_copy_image_ops
     size_t pipeline_count;
 };
 
-HRESULT vkd3d_copy_image_ops_init(struct vkd3d_copy_image_ops *meta_copy_image_ops,
-        struct d3d12_device *device);
-void vkd3d_copy_image_ops_cleanup(struct vkd3d_copy_image_ops *meta_copy_image_ops,
-        struct d3d12_device *device);
-
 struct vkd3d_swapchain_pipeline_key
 {
     VkPipelineBindPoint bind_point;
@@ -3801,11 +3795,6 @@ struct vkd3d_swapchain_ops
     size_t pipeline_count;
 };
 
-HRESULT vkd3d_swapchain_ops_init(struct vkd3d_swapchain_ops *meta_swapchain_ops,
-        struct d3d12_device *device);
-void vkd3d_swapchain_ops_cleanup(struct vkd3d_swapchain_ops *meta_swapchain_ops,
-        struct d3d12_device *device);
-
 #define VKD3D_QUERY_OP_WORKGROUP_SIZE (64)
 
 struct vkd3d_query_resolve_args
@@ -3837,11 +3826,6 @@ struct vkd3d_query_ops
     VkPipelineLayout vk_resolve_pipeline_layout;
     VkPipeline vk_resolve_binary_pipeline;
 };
-
-HRESULT vkd3d_query_ops_init(struct vkd3d_query_ops *meta_query_ops,
-        struct d3d12_device *device);
-void vkd3d_query_ops_cleanup(struct vkd3d_query_ops *meta_query_ops,
-        struct d3d12_device *device);
 
 struct vkd3d_predicate_command_direct_args_execute_indirect
 {
@@ -3902,11 +3886,6 @@ struct vkd3d_predicate_ops
     uint32_t data_sizes[VKD3D_PREDICATE_COMMAND_COUNT];
 };
 
-HRESULT vkd3d_predicate_ops_init(struct vkd3d_predicate_ops *meta_predicate_ops,
-        struct d3d12_device *device);
-void vkd3d_predicate_ops_cleanup(struct vkd3d_predicate_ops *meta_predicate_ops,
-        struct d3d12_device *device);
-
 struct vkd3d_multi_dispatch_indirect_info
 {
     VkPipelineLayout vk_pipeline_layout;
@@ -3941,11 +3920,6 @@ struct vkd3d_multi_dispatch_indirect_ops
     VkPipeline vk_multi_dispatch_indirect_state_pipeline;
 };
 
-HRESULT vkd3d_multi_dispatch_indirect_ops_init(struct vkd3d_multi_dispatch_indirect_ops *meta_predicate_ops,
-        struct d3d12_device *device);
-void vkd3d_multi_dispatch_indirect_ops_cleanup(struct vkd3d_multi_dispatch_indirect_ops *meta_predicate_ops,
-        struct d3d12_device *device);
-
 struct vkd3d_execute_indirect_args
 {
     VkDeviceAddress template_va;
@@ -3975,11 +3949,6 @@ struct vkd3d_execute_indirect_ops
     size_t pipelines_size;
     pthread_mutex_t mutex;
 };
-
-HRESULT vkd3d_execute_indirect_ops_init(struct vkd3d_execute_indirect_ops *meta_indirect_ops,
-        struct d3d12_device *device);
-void vkd3d_execute_indirect_ops_cleanup(struct vkd3d_execute_indirect_ops *meta_indirect_ops,
-        struct d3d12_device *device);
 
 struct vkd3d_dstorage_emit_nv_memory_decompression_regions_args
 {
@@ -4093,6 +4062,7 @@ struct vkd3d_physical_device_info
     VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT graphics_pipeline_library_properties;
     VkPhysicalDeviceMemoryDecompressionPropertiesNV memory_decompression_properties;
     VkPhysicalDeviceMaintenance5PropertiesKHR maintenance_5_properties;
+    VkPhysicalDeviceLineRasterizationPropertiesEXT line_rasterization_properties;
 
     VkPhysicalDeviceProperties2KHR properties2;
 
@@ -4136,6 +4106,7 @@ struct vkd3d_physical_device_info
     VkPhysicalDeviceMemoryDecompressionFeaturesNV memory_decompression_features;
     VkPhysicalDeviceDeviceGeneratedCommandsComputeFeaturesNV device_generated_commands_compute_features_nv;
     VkPhysicalDeviceMaintenance5FeaturesKHR maintenance_5_features;
+    VkPhysicalDeviceLineRasterizationFeaturesEXT line_rasterization_features;
 
     VkPhysicalDeviceFeatures2 features2;
 

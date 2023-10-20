@@ -78,51 +78,52 @@ static const struct vkd3d_optional_extension_info optional_device_extensions[] =
         VK_EXTENSION(KHR_EXTERNAL_MEMORY_WIN32, KHR_external_memory_win32),
         VK_EXTENSION(KHR_EXTERNAL_SEMAPHORE_WIN32, KHR_external_semaphore_win32),
 #endif
-        /* EXT extensions */
-        VK_EXTENSION(EXT_CALIBRATED_TIMESTAMPS, EXT_calibrated_timestamps),
-        VK_EXTENSION(EXT_CONDITIONAL_RENDERING, EXT_conditional_rendering),
-        VK_EXTENSION(EXT_CONSERVATIVE_RASTERIZATION, EXT_conservative_rasterization),
-        VK_EXTENSION(EXT_CUSTOM_BORDER_COLOR, EXT_custom_border_color),
-        VK_EXTENSION(EXT_DEPTH_CLIP_ENABLE, EXT_depth_clip_enable),
-        VK_EXTENSION(EXT_IMAGE_VIEW_MIN_LOD, EXT_image_view_min_lod),
-        VK_EXTENSION(EXT_ROBUSTNESS_2, EXT_robustness2),
-        VK_EXTENSION(EXT_SHADER_STENCIL_EXPORT, EXT_shader_stencil_export),
-        VK_EXTENSION(EXT_TRANSFORM_FEEDBACK, EXT_transform_feedback),
-        VK_EXTENSION(EXT_VERTEX_ATTRIBUTE_DIVISOR, EXT_vertex_attribute_divisor),
-        VK_EXTENSION(EXT_EXTENDED_DYNAMIC_STATE_2, EXT_extended_dynamic_state2),
-        VK_EXTENSION(EXT_EXTERNAL_MEMORY_HOST, EXT_external_memory_host),
-        VK_EXTENSION(EXT_SHADER_IMAGE_ATOMIC_INT64, EXT_shader_image_atomic_int64),
-        VK_EXTENSION(EXT_MESH_SHADER, EXT_mesh_shader),
-        VK_EXTENSION(EXT_MUTABLE_DESCRIPTOR_TYPE, EXT_mutable_descriptor_type),
-        VK_EXTENSION(EXT_HDR_METADATA, EXT_hdr_metadata),
-        VK_EXTENSION(EXT_SHADER_MODULE_IDENTIFIER, EXT_shader_module_identifier),
-        VK_EXTENSION(EXT_DESCRIPTOR_BUFFER, EXT_descriptor_buffer),
-        VK_EXTENSION_COND(EXT_PIPELINE_LIBRARY_GROUP_HANDLES, EXT_pipeline_library_group_handles, VKD3D_CONFIG_FLAG_DXR),
-        VK_EXTENSION(EXT_IMAGE_SLICED_VIEW_OF_3D, EXT_image_sliced_view_of_3d),
-        VK_EXTENSION(EXT_GRAPHICS_PIPELINE_LIBRARY, EXT_graphics_pipeline_library),
-        VK_EXTENSION(EXT_FRAGMENT_SHADER_INTERLOCK, EXT_fragment_shader_interlock),
-        VK_EXTENSION(EXT_PAGEABLE_DEVICE_LOCAL_MEMORY, EXT_pageable_device_local_memory),
-        VK_EXTENSION(EXT_MEMORY_PRIORITY, EXT_memory_priority),
-        VK_EXTENSION(EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS, EXT_dynamic_rendering_unused_attachments),
-        /* AMD extensions */
-        VK_EXTENSION(AMD_BUFFER_MARKER, AMD_buffer_marker),
-        VK_EXTENSION(AMD_DEVICE_COHERENT_MEMORY, AMD_device_coherent_memory),
-        VK_EXTENSION(AMD_SHADER_CORE_PROPERTIES, AMD_shader_core_properties),
-        VK_EXTENSION(AMD_SHADER_CORE_PROPERTIES_2, AMD_shader_core_properties2),
-        /* NV extensions */
-        VK_EXTENSION(NV_SHADER_SM_BUILTINS, NV_shader_sm_builtins),
-        VK_EXTENSION(NVX_BINARY_IMPORT, NVX_binary_import),
-        VK_EXTENSION(NVX_IMAGE_VIEW_HANDLE, NVX_image_view_handle),
-        VK_EXTENSION(NV_FRAGMENT_SHADER_BARYCENTRIC, NV_fragment_shader_barycentric),
-        VK_EXTENSION(NV_COMPUTE_SHADER_DERIVATIVES, NV_compute_shader_derivatives),
-        VK_EXTENSION_COND(NV_DEVICE_DIAGNOSTIC_CHECKPOINTS, NV_device_diagnostic_checkpoints, VKD3D_CONFIG_FLAG_BREADCRUMBS | VKD3D_CONFIG_FLAG_BREADCRUMBS_TRACE),
-        VK_EXTENSION(NV_DEVICE_GENERATED_COMMANDS, NV_device_generated_commands),
-        VK_EXTENSION(NV_SHADER_SUBGROUP_PARTITIONED, NV_shader_subgroup_partitioned),
-        VK_EXTENSION(NV_MEMORY_DECOMPRESSION, NV_memory_decompression),
-        VK_EXTENSION(NV_DEVICE_GENERATED_COMMANDS_COMPUTE, NV_device_generated_commands_compute),
-        /* VALVE extensions */
-        VK_EXTENSION(VALVE_MUTABLE_DESCRIPTOR_TYPE, VALVE_mutable_descriptor_type),
-        VK_EXTENSION(VALVE_DESCRIPTOR_SET_HOST_MAPPING, VALVE_descriptor_set_host_mapping),
+    /* EXT extensions */
+    VK_EXTENSION(EXT_CALIBRATED_TIMESTAMPS, EXT_calibrated_timestamps),
+    VK_EXTENSION(EXT_CONDITIONAL_RENDERING, EXT_conditional_rendering),
+    VK_EXTENSION(EXT_CONSERVATIVE_RASTERIZATION, EXT_conservative_rasterization),
+    VK_EXTENSION(EXT_CUSTOM_BORDER_COLOR, EXT_custom_border_color),
+    VK_EXTENSION(EXT_DEPTH_CLIP_ENABLE, EXT_depth_clip_enable),
+    VK_EXTENSION(EXT_IMAGE_VIEW_MIN_LOD, EXT_image_view_min_lod),
+    VK_EXTENSION(EXT_ROBUSTNESS_2, EXT_robustness2),
+    VK_EXTENSION(EXT_SHADER_STENCIL_EXPORT, EXT_shader_stencil_export),
+    VK_EXTENSION(EXT_TRANSFORM_FEEDBACK, EXT_transform_feedback),
+    VK_EXTENSION(EXT_VERTEX_ATTRIBUTE_DIVISOR, EXT_vertex_attribute_divisor),
+    VK_EXTENSION(EXT_EXTENDED_DYNAMIC_STATE_2, EXT_extended_dynamic_state2),
+    VK_EXTENSION(EXT_EXTERNAL_MEMORY_HOST, EXT_external_memory_host),
+    VK_EXTENSION(EXT_SHADER_IMAGE_ATOMIC_INT64, EXT_shader_image_atomic_int64),
+    VK_EXTENSION(EXT_MESH_SHADER, EXT_mesh_shader),
+    VK_EXTENSION(EXT_MUTABLE_DESCRIPTOR_TYPE, EXT_mutable_descriptor_type),
+    VK_EXTENSION(EXT_HDR_METADATA, EXT_hdr_metadata),
+    VK_EXTENSION(EXT_SHADER_MODULE_IDENTIFIER, EXT_shader_module_identifier),
+    VK_EXTENSION(EXT_DESCRIPTOR_BUFFER, EXT_descriptor_buffer),
+    VK_EXTENSION_COND(EXT_PIPELINE_LIBRARY_GROUP_HANDLES, EXT_pipeline_library_group_handles, VKD3D_CONFIG_FLAG_DXR),
+    VK_EXTENSION(EXT_IMAGE_SLICED_VIEW_OF_3D, EXT_image_sliced_view_of_3d),
+    VK_EXTENSION(EXT_GRAPHICS_PIPELINE_LIBRARY, EXT_graphics_pipeline_library),
+    VK_EXTENSION(EXT_FRAGMENT_SHADER_INTERLOCK, EXT_fragment_shader_interlock),
+    VK_EXTENSION(EXT_PAGEABLE_DEVICE_LOCAL_MEMORY, EXT_pageable_device_local_memory),
+    VK_EXTENSION(EXT_MEMORY_PRIORITY, EXT_memory_priority),
+    VK_EXTENSION(EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS, EXT_dynamic_rendering_unused_attachments),
+    VK_EXTENSION(EXT_LINE_RASTERIZATION, EXT_line_rasterization),
+    /* AMD extensions */
+    VK_EXTENSION(AMD_BUFFER_MARKER, AMD_buffer_marker),
+    VK_EXTENSION(AMD_DEVICE_COHERENT_MEMORY, AMD_device_coherent_memory),
+    VK_EXTENSION(AMD_SHADER_CORE_PROPERTIES, AMD_shader_core_properties),
+    VK_EXTENSION(AMD_SHADER_CORE_PROPERTIES_2, AMD_shader_core_properties2),
+    /* NV extensions */
+    VK_EXTENSION(NV_SHADER_SM_BUILTINS, NV_shader_sm_builtins),
+    VK_EXTENSION(NVX_BINARY_IMPORT, NVX_binary_import),
+    VK_EXTENSION(NVX_IMAGE_VIEW_HANDLE, NVX_image_view_handle),
+    VK_EXTENSION(NV_FRAGMENT_SHADER_BARYCENTRIC, NV_fragment_shader_barycentric),
+    VK_EXTENSION(NV_COMPUTE_SHADER_DERIVATIVES, NV_compute_shader_derivatives),
+    VK_EXTENSION_COND(NV_DEVICE_DIAGNOSTIC_CHECKPOINTS, NV_device_diagnostic_checkpoints, VKD3D_CONFIG_FLAG_BREADCRUMBS | VKD3D_CONFIG_FLAG_BREADCRUMBS_TRACE),
+    VK_EXTENSION(NV_DEVICE_GENERATED_COMMANDS, NV_device_generated_commands),
+    VK_EXTENSION(NV_SHADER_SUBGROUP_PARTITIONED, NV_shader_subgroup_partitioned),
+    VK_EXTENSION(NV_MEMORY_DECOMPRESSION, NV_memory_decompression),
+    VK_EXTENSION(NV_DEVICE_GENERATED_COMMANDS_COMPUTE, NV_device_generated_commands_compute),
+    /* VALVE extensions */
+    VK_EXTENSION(VALVE_MUTABLE_DESCRIPTOR_TYPE, VALVE_mutable_descriptor_type),
+    VK_EXTENSION(VALVE_DESCRIPTOR_SET_HOST_MAPPING, VALVE_descriptor_set_host_mapping),
 };
 
 static unsigned int get_spec_version(const VkExtensionProperties *extensions,
@@ -596,7 +597,14 @@ static const struct vkd3d_shader_quirk_hash re_hashes[] = {
     /* RE4 */
     {0xa100b53736f9c1bfull, VKD3D_SHADER_QUIRK_FORCE_SUBGROUP_SIZE_1},
     /* RE2 and RE7 */
-    {0x1c4c8782b75c498bull, VKD3D_SHADER_QUIRK_FORCE_SUBGROUP_SIZE_1},
+    { 0x1c4c8782b75c498bull, VKD3D_SHADER_QUIRK_FORCE_SUBGROUP_SIZE_1 },
+    /* Temporary driver workaround for RADV. See https://gitlab.freedesktop.org/mesa/mesa/-/issues/9852. */
+    /* This shader trips on Mesa 23.0.3. */
+    { 0xdb1593ced60da3f1ull, VKD3D_SHADER_QUIRK_REWRITE_GRAD_TO_BIAS },
+    /* This shader hangs on Mesa main. */
+    { 0x5784e9e2f7a76819ull, VKD3D_SHADER_QUIRK_REWRITE_GRAD_TO_BIAS },
+    /* This shader hangs on RDNA1 */
+    { 0x7b3cec4ba6d32cacull, VKD3D_SHADER_QUIRK_REWRITE_GRAD_TO_BIAS },
 };
 
 static const struct vkd3d_shader_quirk_info re_quirks = {
@@ -1703,6 +1711,14 @@ static void vkd3d_physical_device_info_init(struct vkd3d_physical_device_info *i
         vk_prepend_struct(&info->features2, &info->dynamic_rendering_unused_attachments_features);
     }
 
+    if (vulkan_info->EXT_line_rasterization)
+    {
+        info->line_rasterization_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_FEATURES_EXT;
+        info->line_rasterization_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_PROPERTIES_EXT;
+        vk_prepend_struct(&info->features2, &info->line_rasterization_features);
+        vk_prepend_struct(&info->properties2, &info->line_rasterization_properties);
+    }
+
     if (vulkan_info->NV_memory_decompression)
     {
         info->memory_decompression_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_DECOMPRESSION_FEATURES_NV;
@@ -2113,6 +2129,10 @@ static void vkd3d_trace_physical_device_features(const struct vkd3d_physical_dev
     TRACE("    taskShader: %#x\n", info->mesh_shader_features.taskShader);
     TRACE("    multiviewMeshShader: %#x\n", info->mesh_shader_features.multiviewMeshShader);
     TRACE("    primitiveFragmentShadingRateMeshShader: %#x\n", info->mesh_shader_features.primitiveFragmentShadingRateMeshShader);
+
+    TRACE("  VkPhysicalDeviceLineRasterizationFeaturesEXT:\n");
+    TRACE("    rectangularLines: %u\n", info->line_rasterization_features.rectangularLines);
+    TRACE("    smoothLines: %u\n", info->line_rasterization_features.smoothLines);
 }
 
 static HRESULT vkd3d_init_device_extensions(struct d3d12_device *device,
@@ -2168,6 +2188,7 @@ static HRESULT vkd3d_init_device_caps(struct d3d12_device *device,
 {
     const struct vkd3d_vk_instance_procs *vk_procs = &device->vkd3d_instance->vk_procs;
     VkPhysicalDeviceAccelerationStructureFeaturesKHR *acceleration_structure;
+    VkPhysicalDeviceLineRasterizationFeaturesEXT *line_rasterization;
     VkPhysicalDeviceDescriptorBufferFeaturesEXT *descriptor_buffer;
     VkPhysicalDevice physical_device = device->vk_physical_device;
     struct vkd3d_vulkan_info *vulkan_info = &device->vk_info;
@@ -2263,6 +2284,12 @@ static HRESULT vkd3d_init_device_caps(struct d3d12_device *device,
 
     acceleration_structure = &physical_device_info->acceleration_structure_features;
     acceleration_structure->accelerationStructureCaptureReplay = VK_FALSE;
+
+    line_rasterization = &physical_device_info->line_rasterization_features;
+    line_rasterization->bresenhamLines = VK_FALSE;
+    line_rasterization->stippledRectangularLines = VK_FALSE;
+    line_rasterization->stippledBresenhamLines = VK_FALSE;
+    line_rasterization->stippledSmoothLines = VK_FALSE;
 
     /* Don't need or require this. Dynamic patch control points is nice, but not required. */
     physical_device_info->extended_dynamic_state2_features.extendedDynamicState2LogicOp = VK_FALSE;

@@ -72,6 +72,8 @@ enum vkd3d_shader_meta_flags
     VKD3D_SHADER_META_FLAG_USES_FRAGMENT_BARYCENTRIC = 1 << 11,
     VKD3D_SHADER_META_FLAG_USES_SAMPLE_RATE_SHADING = 1 << 12,
     VKD3D_SHADER_META_FLAG_USES_RASTERIZER_ORDERED_VIEWS = 1 << 13,
+    VKD3D_SHADER_META_FLAG_EMITS_LINES = 1 << 14,
+    VKD3D_SHADER_META_FLAG_EMITS_TRIANGLES = 1 << 15,
 };
 
 struct vkd3d_shader_meta
@@ -411,6 +413,9 @@ enum vkd3d_shader_quirk
 
     /* For shaders which are bugged when you opt-in to 16-bit. */
     VKD3D_SHADER_QUIRK_FORCE_MIN16_AS_32BIT = (1 << 11),
+
+    /* Driver workaround hackery. Try to rewrite weird Grads to plain Bias. */
+    VKD3D_SHADER_QUIRK_REWRITE_GRAD_TO_BIAS = (1 << 12),
 };
 
 struct vkd3d_shader_quirk_hash
