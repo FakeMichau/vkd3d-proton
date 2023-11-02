@@ -105,6 +105,7 @@ static const struct vkd3d_optional_extension_info optional_device_extensions[] =
     VK_EXTENSION(EXT_MEMORY_PRIORITY, EXT_memory_priority),
     VK_EXTENSION(EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS, EXT_dynamic_rendering_unused_attachments),
     VK_EXTENSION(EXT_LINE_RASTERIZATION, EXT_line_rasterization),
+    VK_EXTENSION(EXT_IMAGE_COMPRESSION_CONTROL, EXT_image_compression_control),
     /* AMD extensions */
     VK_EXTENSION(AMD_BUFFER_MARKER, AMD_buffer_marker),
     VK_EXTENSION(AMD_DEVICE_COHERENT_MEMORY, AMD_device_coherent_memory),
@@ -454,6 +455,7 @@ enum vkd3d_application_feature_override
 {
     VKD3D_APPLICATION_FEATURE_OVERRIDE_NONE = 0,
     VKD3D_APPLICATION_FEATURE_OVERRIDE_PROMOTE_DXR_TO_ULTIMATE,
+    VKD3D_APPLICATION_FEATURE_DISABLE_DGCC_NV,
 };
 
 static enum vkd3d_application_feature_override vkd3d_application_feature_override;
@@ -479,13 +481,14 @@ static const struct vkd3d_instance_application_meta application_override[] = {
      * Need another config flag to workaround that as well.
      * Poor loading times and performance with ReBar on some devices.
      */
-    {VKD3D_STRING_COMPARE_EXACT, "HaloInfinite.exe",
-     VKD3D_CONFIG_FLAG_ZERO_MEMORY_WORKAROUNDS_COMMITTED_BUFFER_UAV | VKD3D_CONFIG_FLAG_FORCE_RAW_VA_CBV |
-         VKD3D_CONFIG_FLAG_USE_HOST_IMPORT_FALLBACK | VKD3D_CONFIG_FLAG_PREALLOCATE_SRV_MIP_CLAMPS |
-         VKD3D_CONFIG_FLAG_REQUIRES_COMPUTE_INDIRECT_TEMPLATES | VKD3D_CONFIG_FLAG_NO_UPLOAD_HVV,
-     0},
+    { VKD3D_STRING_COMPARE_EXACT, "HaloInfinite.exe",
+            VKD3D_CONFIG_FLAG_ZERO_MEMORY_WORKAROUNDS_COMMITTED_BUFFER_UAV | VKD3D_CONFIG_FLAG_FORCE_RAW_VA_CBV |
+            VKD3D_CONFIG_FLAG_USE_HOST_IMPORT_FALLBACK | VKD3D_CONFIG_FLAG_PREALLOCATE_SRV_MIP_CLAMPS |
+            VKD3D_CONFIG_FLAG_REQUIRES_COMPUTE_INDIRECT_TEMPLATES | VKD3D_CONFIG_FLAG_NO_UPLOAD_HVV, 0,
+            VKD3D_APPLICATION_FEATURE_DISABLE_DGCC_NV },
     /* (1182900) Workaround amdgpu kernel bug with host memory import and concurrent submissions. */
-    {VKD3D_STRING_COMPARE_EXACT, "APlagueTaleRequiem_x64.exe", VKD3D_CONFIG_FLAG_USE_HOST_IMPORT_FALLBACK, 0},
+    { VKD3D_STRING_COMPARE_EXACT, "APlagueTaleRequiem_x64.exe",
+            VKD3D_CONFIG_FLAG_USE_HOST_IMPORT_FALLBACK | VKD3D_CONFIG_FLAG_DISABLE_UAV_COMPRESSION, 0 },
     /* Shadow of the Tomb Raider (750920).
      * Invariant workarounds actually cause more issues than they resolve on NV.
      * RADV already has workarounds by default.
@@ -535,7 +538,7 @@ static const struct vkd3d_instance_application_meta application_override[] = {
     /* Dead Space (2023) (1693980) */
     {VKD3D_STRING_COMPARE_EXACT, "Dead Space.exe", VKD3D_CONFIG_FLAG_FORCE_DEDICATED_IMAGE_ALLOCATION, 0},
     /* Witcher 3 (2023) (292030) */
-    {VKD3D_STRING_COMPARE_EXACT, "witcher3.exe", VKD3D_CONFIG_FLAG_SIMULTANEOUS_UAV_SUPPRESS_COMPRESSION, 0},
+    { VKD3D_STRING_COMPARE_EXACT, "witcher3.exe", VKD3D_CONFIG_FLAG_DISABLE_SIMULTANEOUS_UAV_COMPRESSION, 0 },
     /* Age of Wonders 4 (1669000). Extremely stuttery performance with ReBAR. */
     {VKD3D_STRING_COMPARE_EXACT, "AOW4.exe", VKD3D_CONFIG_FLAG_NO_UPLOAD_HVV, 0},
     /* Starfield (1716740) */
@@ -808,43 +811,47 @@ static void vkd3d_instance_apply_global_shader_quirks(void)
 }
 
 static const struct vkd3d_debug_option vkd3d_config_options[] =
-    {
-        /* Enable Vulkan debug extensions. */
-        {"vk_debug", VKD3D_CONFIG_FLAG_VULKAN_DEBUG},
-        {"skip_application_workarounds", VKD3D_CONFIG_FLAG_SKIP_APPLICATION_WORKAROUNDS},
-        {"debug_utils", VKD3D_CONFIG_FLAG_DEBUG_UTILS},
-        {"force_static_cbv", VKD3D_CONFIG_FLAG_FORCE_STATIC_CBV},
-        {"dxr", VKD3D_CONFIG_FLAG_DXR | VKD3D_CONFIG_FLAG_DXR11},
-        {"dxr11", VKD3D_CONFIG_FLAG_DXR | VKD3D_CONFIG_FLAG_DXR11}, /* Alias for compat reasons */
-        {"single_queue", VKD3D_CONFIG_FLAG_SINGLE_QUEUE},
-        {"descriptor_qa_checks", VKD3D_CONFIG_FLAG_DESCRIPTOR_QA_CHECKS},
-        {"no_upload_hvv", VKD3D_CONFIG_FLAG_NO_UPLOAD_HVV},
-        {"log_memory_budget", VKD3D_CONFIG_FLAG_LOG_MEMORY_BUDGET},
-        {"force_host_cached", VKD3D_CONFIG_FLAG_FORCE_HOST_CACHED},
-        {"no_invariant_position", VKD3D_CONFIG_FLAG_FORCE_NO_INVARIANT_POSITION},
-        {"global_pipeline_cache", VKD3D_CONFIG_FLAG_GLOBAL_PIPELINE_CACHE},
-        {"pipeline_library_no_serialize_spirv", VKD3D_CONFIG_FLAG_PIPELINE_LIBRARY_NO_SERIALIZE_SPIRV},
-        {"pipeline_library_sanitize_spirv", VKD3D_CONFIG_FLAG_PIPELINE_LIBRARY_SANITIZE_SPIRV},
-        {"pipeline_library_log", VKD3D_CONFIG_FLAG_PIPELINE_LIBRARY_LOG},
-        {"pipeline_library_ignore_spirv", VKD3D_CONFIG_FLAG_PIPELINE_LIBRARY_IGNORE_SPIRV},
-        {"mutable_single_set", VKD3D_CONFIG_FLAG_MUTABLE_SINGLE_SET},
-        {"memory_allocator_skip_clear", VKD3D_CONFIG_FLAG_MEMORY_ALLOCATOR_SKIP_CLEAR},
-        {"recycle_command_pools", VKD3D_CONFIG_FLAG_RECYCLE_COMMAND_POOLS},
-        {"pipeline_library_ignore_mismatch_driver", VKD3D_CONFIG_FLAG_PIPELINE_LIBRARY_IGNORE_MISMATCH_DRIVER},
-        {"breadcrumbs", VKD3D_CONFIG_FLAG_BREADCRUMBS},
-        {"pipeline_library_app_cache", VKD3D_CONFIG_FLAG_PIPELINE_LIBRARY_APP_CACHE_ONLY},
-        {"shader_cache_sync", VKD3D_CONFIG_FLAG_SHADER_CACHE_SYNC},
-        {"force_raw_va_cbv", VKD3D_CONFIG_FLAG_FORCE_RAW_VA_CBV},
-        {"allow_sbt_collection", VKD3D_CONFIG_FLAG_ALLOW_SBT_COLLECTION},
-        {"host_import_fallback", VKD3D_CONFIG_FLAG_USE_HOST_IMPORT_FALLBACK},
-        {"preallocate_srv_mip_clamps", VKD3D_CONFIG_FLAG_PREALLOCATE_SRV_MIP_CLAMPS},
-        {"force_initial_transition", VKD3D_CONFIG_FLAG_FORCE_INITIAL_TRANSITION},
-        {"breadcrumbs_trace", VKD3D_CONFIG_FLAG_BREADCRUMBS | VKD3D_CONFIG_FLAG_BREADCRUMBS_TRACE},
-        {"requires_compute_indirect_templates", VKD3D_CONFIG_FLAG_REQUIRES_COMPUTE_INDIRECT_TEMPLATES},
-        {"skip_driver_workarounds", VKD3D_CONFIG_FLAG_SKIP_DRIVER_WORKAROUNDS},
-        {"curb_memory_pso_cache", VKD3D_CONFIG_FLAG_CURB_MEMORY_PSO_CACHE},
-        {"enable_experimental_features", VKD3D_CONFIG_FLAG_ENABLE_EXPERIMENTAL_FEATURES},
-        {"reject_padded_small_resource_alignment", VKD3D_CONFIG_FLAG_REJECT_PADDED_SMALL_RESOURCE_ALIGNMENT},
+{
+    /* Enable Vulkan debug extensions. */
+    {"vk_debug", VKD3D_CONFIG_FLAG_VULKAN_DEBUG},
+    {"skip_application_workarounds", VKD3D_CONFIG_FLAG_SKIP_APPLICATION_WORKAROUNDS},
+    {"debug_utils", VKD3D_CONFIG_FLAG_DEBUG_UTILS},
+    {"force_static_cbv", VKD3D_CONFIG_FLAG_FORCE_STATIC_CBV},
+    {"dxr", VKD3D_CONFIG_FLAG_DXR | VKD3D_CONFIG_FLAG_DXR11},
+    {"dxr11", VKD3D_CONFIG_FLAG_DXR | VKD3D_CONFIG_FLAG_DXR11}, /* Alias for compat reasons */
+    {"single_queue", VKD3D_CONFIG_FLAG_SINGLE_QUEUE},
+    {"descriptor_qa_checks", VKD3D_CONFIG_FLAG_DESCRIPTOR_QA_CHECKS},
+    {"no_upload_hvv", VKD3D_CONFIG_FLAG_NO_UPLOAD_HVV},
+    {"log_memory_budget", VKD3D_CONFIG_FLAG_LOG_MEMORY_BUDGET},
+    {"force_host_cached", VKD3D_CONFIG_FLAG_FORCE_HOST_CACHED},
+    {"no_invariant_position", VKD3D_CONFIG_FLAG_FORCE_NO_INVARIANT_POSITION},
+    {"global_pipeline_cache", VKD3D_CONFIG_FLAG_GLOBAL_PIPELINE_CACHE},
+    {"pipeline_library_no_serialize_spirv", VKD3D_CONFIG_FLAG_PIPELINE_LIBRARY_NO_SERIALIZE_SPIRV},
+    {"pipeline_library_sanitize_spirv", VKD3D_CONFIG_FLAG_PIPELINE_LIBRARY_SANITIZE_SPIRV},
+    {"pipeline_library_log", VKD3D_CONFIG_FLAG_PIPELINE_LIBRARY_LOG},
+    {"pipeline_library_ignore_spirv", VKD3D_CONFIG_FLAG_PIPELINE_LIBRARY_IGNORE_SPIRV},
+    {"mutable_single_set", VKD3D_CONFIG_FLAG_MUTABLE_SINGLE_SET},
+    {"memory_allocator_skip_clear", VKD3D_CONFIG_FLAG_MEMORY_ALLOCATOR_SKIP_CLEAR},
+    {"recycle_command_pools", VKD3D_CONFIG_FLAG_RECYCLE_COMMAND_POOLS},
+    {"pipeline_library_ignore_mismatch_driver", VKD3D_CONFIG_FLAG_PIPELINE_LIBRARY_IGNORE_MISMATCH_DRIVER},
+    {"breadcrumbs", VKD3D_CONFIG_FLAG_BREADCRUMBS},
+    {"pipeline_library_app_cache", VKD3D_CONFIG_FLAG_PIPELINE_LIBRARY_APP_CACHE_ONLY},
+    {"shader_cache_sync", VKD3D_CONFIG_FLAG_SHADER_CACHE_SYNC},
+    {"force_raw_va_cbv", VKD3D_CONFIG_FLAG_FORCE_RAW_VA_CBV},
+    {"allow_sbt_collection", VKD3D_CONFIG_FLAG_ALLOW_SBT_COLLECTION},
+    {"host_import_fallback", VKD3D_CONFIG_FLAG_USE_HOST_IMPORT_FALLBACK},
+    {"preallocate_srv_mip_clamps", VKD3D_CONFIG_FLAG_PREALLOCATE_SRV_MIP_CLAMPS},
+    {"force_initial_transition", VKD3D_CONFIG_FLAG_FORCE_INITIAL_TRANSITION},
+    {"breadcrumbs_trace", VKD3D_CONFIG_FLAG_BREADCRUMBS | VKD3D_CONFIG_FLAG_BREADCRUMBS_TRACE},
+    {"requires_compute_indirect_templates", VKD3D_CONFIG_FLAG_REQUIRES_COMPUTE_INDIRECT_TEMPLATES},
+    {"skip_driver_workarounds", VKD3D_CONFIG_FLAG_SKIP_DRIVER_WORKAROUNDS},
+    {"curb_memory_pso_cache", VKD3D_CONFIG_FLAG_CURB_MEMORY_PSO_CACHE},
+    {"enable_experimental_features", VKD3D_CONFIG_FLAG_ENABLE_EXPERIMENTAL_FEATURES},
+    {"reject_padded_small_resource_alignment", VKD3D_CONFIG_FLAG_REJECT_PADDED_SMALL_RESOURCE_ALIGNMENT},
+    {"disable_simultaneous_uav_compression", VKD3D_CONFIG_FLAG_DISABLE_SIMULTANEOUS_UAV_COMPRESSION},
+    {"disable_uav_compression", VKD3D_CONFIG_FLAG_DISABLE_UAV_COMPRESSION},
+    {"disable_depth_compression", VKD3D_CONFIG_FLAG_DISABLE_DEPTH_COMPRESSION},
+    {"disable_color_compression", VKD3D_CONFIG_FLAG_DISABLE_COLOR_COMPRESSION},
 };
 
 static void vkd3d_config_flags_init_once(void)
@@ -1347,13 +1354,31 @@ static void vkd3d_physical_device_info_apply_workarounds(struct vkd3d_physical_d
 
     if (!(vkd3d_config_flags & VKD3D_CONFIG_FLAG_SKIP_DRIVER_WORKAROUNDS))
     {
-        /* The first beta release fails vkd3d-proton tests. Unblock when it's passing. */
         if (info->vulkan_1_2_properties.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
-            device->vk_info.NV_device_generated_commands_compute)
+                device->vk_info.NV_device_generated_commands_compute)
         {
-            device->vk_info.NV_device_generated_commands_compute = false;
-            device->device_info.device_generated_commands_compute_features_nv.deviceGeneratedCompute = VK_FALSE;
-            WARN("Disabling NV_dgcc due to bug in initial beta release.\n");
+            bool broken_version_linux, broken_version_windows;
+            /* A lot of drivers were broken until 535.43.15 (Linux) and 537.72 (Windows). */
+
+            broken_version_linux =
+                    info->properties2.properties.driverVersion >= VKD3D_DRIVER_VERSION_MAKE_NV(535, 43, 0) &&
+                    info->properties2.properties.driverVersion < VKD3D_DRIVER_VERSION_MAKE_NV(535, 43, 15);
+
+            broken_version_windows =
+                    info->properties2.properties.driverVersion >= VKD3D_DRIVER_VERSION_MAKE_NV(537, 0, 0) &&
+                    info->properties2.properties.driverVersion < VKD3D_DRIVER_VERSION_MAKE_NV(537, 72, 0);
+
+            if (vkd3d_application_feature_override == VKD3D_APPLICATION_FEATURE_DISABLE_DGCC_NV ||
+                    broken_version_linux || broken_version_windows)
+            {
+                device->vk_info.NV_device_generated_commands_compute = false;
+                device->device_info.device_generated_commands_compute_features_nv.deviceGeneratedCompute = VK_FALSE;
+
+                if (vkd3d_application_feature_override == VKD3D_APPLICATION_FEATURE_DISABLE_DGCC_NV)
+                    WARN("Disabling NV_dgcc due to bug in specific game.\n");
+                else
+                    WARN("Disabling NV_dgcc due to bug in initial beta release.\n");
+            }
         }
 
         /* NV 525.x drivers and 530.x are affected by this bug. Not all users are affected,
@@ -1717,6 +1742,13 @@ static void vkd3d_physical_device_info_init(struct vkd3d_physical_device_info *i
         info->line_rasterization_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_LINE_RASTERIZATION_PROPERTIES_EXT;
         vk_prepend_struct(&info->features2, &info->line_rasterization_features);
         vk_prepend_struct(&info->properties2, &info->line_rasterization_properties);
+    }
+
+    if (vulkan_info->EXT_image_compression_control)
+    {
+        info->image_compression_control_features.sType =
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_COMPRESSION_CONTROL_FEATURES_EXT;
+        vk_prepend_struct(&info->features2, &info->image_compression_control_features);
     }
 
     if (vulkan_info->NV_memory_decompression)
