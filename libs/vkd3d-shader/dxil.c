@@ -587,6 +587,8 @@ int vkd3d_shader_compile_dxil(const struct vkd3d_shader_code *dxbc,
         return ret;
     }
     quirks = vkd3d_shader_compile_arguments_select_quirks(compiler_args, hash);
+    if (quirks & VKD3D_SHADER_QUIRK_FORCE_COMPUTE_BARRIER)
+        spirv->meta.flags |= VKD3D_SHADER_META_FLAG_FORCE_COMPUTE_BARRIER_AFTER_DISPATCH;
 
     dxil_spv_begin_thread_allocator_context();
 
@@ -771,6 +773,18 @@ int vkd3d_shader_compile_dxil(const struct vkd3d_shader_code *dxbc,
         if (dxil_spv_converter_add_option(converter, &helper.base) != DXIL_SPV_SUCCESS)
         {
             WARN("dxil-spirv does not support PRECISE_CONTROL.\n");
+            ret = VKD3D_ERROR_NOT_IMPLEMENTED;
+            goto end;
+        }
+    }
+
+    if (quirks & VKD3D_SHADER_QUIRK_FORCE_LOOP)
+    {
+        struct dxil_spv_option_branch_control helper = { { DXIL_SPV_OPTION_BRANCH_CONTROL } };
+        helper.force_loop = DXIL_SPV_TRUE;
+        if (dxil_spv_converter_add_option(converter, &helper.base) != DXIL_SPV_SUCCESS)
+        {
+            WARN("dxil-spirv does not support BRANCH_CONTROL.\n");
             ret = VKD3D_ERROR_NOT_IMPLEMENTED;
             goto end;
         }
@@ -1082,6 +1096,8 @@ int vkd3d_shader_compile_dxil_export(const struct vkd3d_shader_code *dxil,
     spirv->meta.hash = hash;
 
     quirks = vkd3d_shader_compile_arguments_select_quirks(compiler_args, hash);
+    if (quirks & VKD3D_SHADER_QUIRK_FORCE_COMPUTE_BARRIER)
+        spirv->meta.flags |= VKD3D_SHADER_META_FLAG_FORCE_COMPUTE_BARRIER_AFTER_DISPATCH;
 
     /* For user provided (not mangled) export names, just inherit that name. */
     if (!demangled_export)
@@ -1365,6 +1381,18 @@ int vkd3d_shader_compile_dxil_export(const struct vkd3d_shader_code *dxil,
         if (dxil_spv_converter_add_option(converter, &helper.base) != DXIL_SPV_SUCCESS)
         {
             WARN("dxil-spirv does not support PRECISE_CONTROL.\n");
+            ret = VKD3D_ERROR_NOT_IMPLEMENTED;
+            goto end;
+        }
+    }
+
+    if (quirks & VKD3D_SHADER_QUIRK_FORCE_LOOP)
+    {
+        struct dxil_spv_option_branch_control helper = { { DXIL_SPV_OPTION_BRANCH_CONTROL } };
+        helper.force_loop = DXIL_SPV_TRUE;
+        if (dxil_spv_converter_add_option(converter, &helper.base) != DXIL_SPV_SUCCESS)
+        {
+            WARN("dxil-spirv does not support BRANCH_CONTROL.\n");
             ret = VKD3D_ERROR_NOT_IMPLEMENTED;
             goto end;
         }
