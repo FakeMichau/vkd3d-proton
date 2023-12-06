@@ -778,6 +778,19 @@ int vkd3d_shader_compile_dxil(const struct vkd3d_shader_code *dxbc,
         }
     }
 
+    {
+        const struct dxil_spv_option_subgroup_properties helper =
+                { { DXIL_SPV_OPTION_SUBGROUP_PROPERTIES },
+                        compiler_args->min_subgroup_size,
+                        compiler_args->max_subgroup_size };
+        if (dxil_spv_converter_add_option(converter, &helper.base) != DXIL_SPV_SUCCESS)
+        {
+            WARN("dxil-spirv does not support SUBGROUP_PROPERTIES.\n");
+            ret = VKD3D_ERROR_NOT_IMPLEMENTED;
+            goto end;
+        }
+    }
+
     if (quirks & VKD3D_SHADER_QUIRK_FORCE_LOOP)
     {
         struct dxil_spv_option_branch_control helper = { { DXIL_SPV_OPTION_BRANCH_CONTROL } };
@@ -785,6 +798,23 @@ int vkd3d_shader_compile_dxil(const struct vkd3d_shader_code *dxbc,
         if (dxil_spv_converter_add_option(converter, &helper.base) != DXIL_SPV_SUCCESS)
         {
             WARN("dxil-spirv does not support BRANCH_CONTROL.\n");
+            ret = VKD3D_ERROR_NOT_IMPLEMENTED;
+            goto end;
+        }
+    }
+
+    if ((quirks & VKD3D_SHADER_QUIRK_DESCRIPTOR_HEAP_ROBUSTNESS) &&
+            (shader_interface_info->flags & VKD3D_SHADER_INTERFACE_RAW_VA_ALIAS_DESCRIPTOR_BUFFER))
+    {
+        /* Checking for RAW_VA_ALIAS_DESCRIPTOR_BUFFER is technically not needed,
+         * but only RADV is affected here and NV miscompiles shaders if you only query OpArrayLength
+         * from a descriptor buffer SSBO. */
+        struct dxil_spv_option_descriptor_heap_robustness helper = { { DXIL_SPV_OPTION_DESCRIPTOR_HEAP_ROBUSTNESS },
+                DXIL_SPV_TRUE };
+
+        if (dxil_spv_converter_add_option(converter, &helper.base) != DXIL_SPV_SUCCESS)
+        {
+            WARN("dxil-spirv does not support DESCRIPTOR_HEAP_ROBUSTNESS.\n");
             ret = VKD3D_ERROR_NOT_IMPLEMENTED;
             goto end;
         }
@@ -1386,6 +1416,19 @@ int vkd3d_shader_compile_dxil_export(const struct vkd3d_shader_code *dxil,
         }
     }
 
+    {
+        const struct dxil_spv_option_subgroup_properties helper =
+                { { DXIL_SPV_OPTION_SUBGROUP_PROPERTIES },
+                        compiler_args->min_subgroup_size,
+                        compiler_args->max_subgroup_size };
+        if (dxil_spv_converter_add_option(converter, &helper.base) != DXIL_SPV_SUCCESS)
+        {
+            WARN("dxil-spirv does not support SUBGROUP_PROPERTIES.\n");
+            ret = VKD3D_ERROR_NOT_IMPLEMENTED;
+            goto end;
+        }
+    }
+
     if (quirks & VKD3D_SHADER_QUIRK_FORCE_LOOP)
     {
         struct dxil_spv_option_branch_control helper = { { DXIL_SPV_OPTION_BRANCH_CONTROL } };
@@ -1393,6 +1436,23 @@ int vkd3d_shader_compile_dxil_export(const struct vkd3d_shader_code *dxil,
         if (dxil_spv_converter_add_option(converter, &helper.base) != DXIL_SPV_SUCCESS)
         {
             WARN("dxil-spirv does not support BRANCH_CONTROL.\n");
+            ret = VKD3D_ERROR_NOT_IMPLEMENTED;
+            goto end;
+        }
+    }
+
+    if ((quirks & VKD3D_SHADER_QUIRK_DESCRIPTOR_HEAP_ROBUSTNESS) &&
+            (shader_interface_info->flags & VKD3D_SHADER_INTERFACE_RAW_VA_ALIAS_DESCRIPTOR_BUFFER))
+    {
+        /* Checking for RAW_VA_ALIAS_DESCRIPTOR_BUFFER is technically not needed,
+         * but only RADV is affected here and NV miscompiles shaders if you only query OpArrayLength
+         * from a descriptor buffer SSBO. */
+        struct dxil_spv_option_descriptor_heap_robustness helper = { { DXIL_SPV_OPTION_DESCRIPTOR_HEAP_ROBUSTNESS },
+                DXIL_SPV_TRUE };
+
+        if (dxil_spv_converter_add_option(converter, &helper.base) != DXIL_SPV_SUCCESS)
+        {
+            WARN("dxil-spirv does not support DESCRIPTOR_HEAP_ROBUSTNESS.\n");
             ret = VKD3D_ERROR_NOT_IMPLEMENTED;
             goto end;
         }
@@ -1570,20 +1630,30 @@ void vkd3d_shader_dxil_free_library_subobjects(struct vkd3d_shader_library_subob
 
     for (i = 0; i < count; i++)
     {
-        if (subobjects[i].kind == VKD3D_SHADER_SUBOBJECT_KIND_SUBOBJECT_TO_EXPORTS_ASSOCIATION)
+        if (!subobjects[i].borrowed_payloads)
         {
-            for (j = 0; j < subobjects[i].data.association.NumExports; j++)
-                vkd3d_free((void*)subobjects[i].data.association.pExports[j]);
-            vkd3d_free((void*)subobjects[i].data.association.pExports);
-            vkd3d_free((void*)subobjects[i].data.association.SubobjectToAssociate);
+            if (subobjects[i].kind == VKD3D_SHADER_SUBOBJECT_KIND_SUBOBJECT_TO_EXPORTS_ASSOCIATION)
+            {
+                for (j = 0; j < subobjects[i].data.association.NumExports; j++)
+                    vkd3d_free((void *) subobjects[i].data.association.pExports[j]);
+                vkd3d_free((void *) subobjects[i].data.association.pExports);
+                vkd3d_free((void *) subobjects[i].data.association.SubobjectToAssociate);
+            }
+            else if (subobjects[i].kind == VKD3D_SHADER_SUBOBJECT_KIND_HIT_GROUP)
+            {
+                vkd3d_free((void *) subobjects[i].data.hit_group.HitGroupExport);
+                vkd3d_free((void *) subobjects[i].data.hit_group.AnyHitShaderImport);
+                vkd3d_free((void *) subobjects[i].data.hit_group.ClosestHitShaderImport);
+                vkd3d_free((void *) subobjects[i].data.hit_group.IntersectionShaderImport);
+            }
+            else if (subobjects[i].kind == VKD3D_SHADER_SUBOBJECT_KIND_GLOBAL_ROOT_SIGNATURE ||
+                    subobjects[i].kind == VKD3D_SHADER_SUBOBJECT_KIND_LOCAL_ROOT_SIGNATURE)
+            {
+                vkd3d_free(subobjects[i].data.payload.data);
+            }
         }
-        else if (subobjects[i].kind == VKD3D_SHADER_SUBOBJECT_KIND_HIT_GROUP)
-        {
-            vkd3d_free((void*)subobjects[i].data.hit_group.HitGroupExport);
-            vkd3d_free((void*)subobjects[i].data.hit_group.AnyHitShaderImport);
-            vkd3d_free((void*)subobjects[i].data.hit_group.ClosestHitShaderImport);
-            vkd3d_free((void*)subobjects[i].data.hit_group.IntersectionShaderImport);
-        }
+
+        vkd3d_free(subobjects[i].name);
     }
 
     vkd3d_free(subobjects);
@@ -1645,14 +1715,15 @@ static void vkd3d_shader_dxil_copy_subobject(unsigned int identifier,
 
     /* Reuse same enums as DXIL. */
     subobject->kind = (enum vkd3d_shader_subobject_kind)dxil_subobject->kind;
-    subobject->name = dxil_subobject->subobject_name;
-    subobject->dxil_identifier = identifier;
+    subobject->name = vkd3d_dup_entry_point(dxil_subobject->subobject_name);
+    subobject->borrowed_payloads = false;
 
     switch (dxil_subobject->kind)
     {
         case DXIL_SPV_RDAT_SUBOBJECT_KIND_GLOBAL_ROOT_SIGNATURE:
         case DXIL_SPV_RDAT_SUBOBJECT_KIND_LOCAL_ROOT_SIGNATURE:
-            subobject->data.payload.data = dxil_subobject->payload;
+            subobject->data.payload.data = vkd3d_malloc(dxil_subobject->payload_size);
+            memcpy(subobject->data.payload.data, dxil_subobject->payload, dxil_subobject->payload_size);
             subobject->data.payload.size = dxil_subobject->payload_size;
             break;
 

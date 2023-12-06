@@ -110,6 +110,9 @@ static void d3d12_state_object_dec_ref(struct d3d12_state_object *state_object)
     }
 }
 
+static void d3d12_state_object_pipeline_data_cleanup(struct d3d12_state_object_pipeline_data *data,
+        struct d3d12_device *device);
+
 static void d3d12_state_object_cleanup(struct d3d12_state_object *object)
 {
     const struct vkd3d_vk_device_procs *vk_procs = &object->device->vk_procs;
@@ -122,11 +125,21 @@ static void d3d12_state_object_cleanup(struct d3d12_state_object *object)
         vkd3d_free(object->exports[i].plain_export);
     }
     vkd3d_free(object->exports);
+    object->exports = NULL;
+    object->exports_count = 0;
+    object->exports_size = 0;
+
     vkd3d_free(object->entry_points);
+    object->entry_points = NULL;
+    object->entry_points_count = 0;
+    /* This is pilfered from data struct, and we don't copy the size. */
 
     for (i = 0; i < object->collections_count; i++)
         d3d12_state_object_dec_ref(object->collections[i]);
     vkd3d_free(object->collections);
+    object->collections = NULL;
+    object->collections_count = 0;
+    /* This is pilfered from data struct, and we don't copy the size. */
 
     for (i = 0; i < object->pipelines_count; i++)
     {
@@ -150,9 +163,22 @@ static void d3d12_state_object_cleanup(struct d3d12_state_object *object)
         }
     }
     vkd3d_free(object->pipelines);
+    object->pipelines = NULL;
+    object->pipelines_count = 0;
+    object->pipelines_size = 0;
+
+    if (object->deferred_data)
+    {
+        d3d12_state_object_pipeline_data_cleanup(object->deferred_data, object->device);
+        vkd3d_free(object->deferred_data);
+        object->deferred_data = NULL;
+    }
 
 #ifdef VKD3D_ENABLE_BREADCRUMBS
     vkd3d_free(object->breadcrumb_shaders);
+    object->breadcrumb_shaders = NULL;
+    object->breadcrumb_shaders_count = 0;
+    object->breadcrumb_shaders_size = 0;
 #endif
 }
 
@@ -444,6 +470,7 @@ struct d3d12_state_object_pipeline_data
     size_t vk_libraries_count;
 
     struct vkd3d_shader_debug_ring_spec_info *spec_info_buffer;
+    bool has_deep_duplication;
 };
 
 static void d3d12_state_object_pipeline_data_cleanup_modules(struct d3d12_state_object_pipeline_data *data,
@@ -458,19 +485,17 @@ static void d3d12_state_object_pipeline_data_cleanup_modules(struct d3d12_state_
     data->stages_count = 0;
 }
 
-static void d3d12_state_object_pipeline_data_cleanup(struct d3d12_state_object_pipeline_data *data,
+static void d3d12_state_object_pipeline_data_cleanup_compile_temporaries(struct d3d12_state_object_pipeline_data *data,
         struct d3d12_device *device)
 {
     unsigned int i;
 
-    vkd3d_shader_dxil_free_library_entry_points(data->entry_points, data->entry_points_count);
-    vkd3d_shader_dxil_free_library_subobjects(data->subobjects, data->subobjects_count);
-    vkd3d_free((void*)data->hit_groups);
-    vkd3d_free((void*)data->dxil_libraries);
-
     for (i = 0; i < data->subobject_root_signatures_count; i++)
         d3d12_root_signature_dec_ref(data->subobject_root_signatures[i]);
     vkd3d_free(data->subobject_root_signatures);
+    data->subobject_root_signatures = NULL;
+    data->subobject_root_signatures_count = 0;
+    data->subobject_root_signatures_size = 0;
 
     for (i = 0; i < data->exports_count; i++)
     {
@@ -478,15 +503,141 @@ static void d3d12_state_object_pipeline_data_cleanup(struct d3d12_state_object_p
         vkd3d_free(data->exports[i].plain_export);
     }
     vkd3d_free(data->exports);
+    data->exports = NULL;
+    data->exports_count = 0;
+    data->exports_size = 0;
+
     vkd3d_free(data->groups);
+    data->groups = NULL;
+    data->groups_count = 0;
+    data->groups_size = 0;
 
     d3d12_state_object_pipeline_data_cleanup_modules(data, device);
     vkd3d_free(data->stages);
+    data->stages = 0;
+    data->stages_count = 0;
+    data->stages_size = 0;
+
+    vkd3d_free(data->collections);
+    data->collections = NULL;
+    data->collections_count = 0;
+    data->collections_size = 0;
+
+    vkd3d_free(data->vk_libraries);
+    data->vk_libraries = NULL;
+    data->vk_libraries_count = 0;
+    data->vk_libraries_size = 0;
+
+    vkd3d_free(data->spec_info_buffer);
+    data->spec_info_buffer = NULL;
+}
+
+static void d3d12_state_object_pipeline_data_cleanup(struct d3d12_state_object_pipeline_data *data,
+        struct d3d12_device *device)
+{
+    unsigned int i;
+
+    vkd3d_shader_dxil_free_library_entry_points(data->entry_points, data->entry_points_count);
+    vkd3d_shader_dxil_free_library_subobjects(data->subobjects, data->subobjects_count);
+
+    if (data->has_deep_duplication)
+    {
+        /* TODO: Should consider a linear allocator here so we can just yoink,
+         * but only one known game hits this case, so ... eh. */
+        for (i = 0; i < data->hit_groups_count; i++)
+        {
+            vkd3d_free((void*)data->hit_groups[i]->AnyHitShaderImport);
+            vkd3d_free((void*)data->hit_groups[i]->ClosestHitShaderImport);
+            vkd3d_free((void*)data->hit_groups[i]->IntersectionShaderImport);
+            vkd3d_free((void*)data->hit_groups[i]->HitGroupExport);
+            vkd3d_free((void*)data->hit_groups[i]);
+        }
+
+        for (i = 0; i < data->dxil_libraries_count; i++)
+        {
+            vkd3d_free((void*)data->dxil_libraries[i]->DXILLibrary.pShaderBytecode);
+            vkd3d_free((void*)data->dxil_libraries[i]);
+        }
+    }
+    vkd3d_free((void*)data->hit_groups);
+    vkd3d_free((void*)data->dxil_libraries);
+
+    for (i = 0; i < data->associations_count; i++)
+    {
+        if ((data->associations[i].kind == VKD3D_SHADER_SUBOBJECT_KIND_GLOBAL_ROOT_SIGNATURE ||
+                data->associations[i].kind == VKD3D_SHADER_SUBOBJECT_KIND_LOCAL_ROOT_SIGNATURE) &&
+                data->associations[i].root_signature)
+        {
+            d3d12_root_signature_dec_ref(data->associations[i].root_signature);
+        }
+
+        if (data->has_deep_duplication)
+            vkd3d_free((void*)data->associations[i].export);
+    }
 
     vkd3d_free(data->associations);
-    vkd3d_free(data->collections);
-    vkd3d_free(data->vk_libraries);
-    vkd3d_free(data->spec_info_buffer);
+
+    d3d12_state_object_pipeline_data_cleanup_compile_temporaries(data, device);
+}
+
+static void *dup_memory(const void *data, size_t size)
+{
+    /* TODO: Should consider a linear allocator here so we can just yoink,
+     * but only one known game hits this case, so ... eh. */
+    void *new_data = vkd3d_malloc(size);
+    if (new_data)
+        memcpy(new_data, data, size);
+    return new_data;
+}
+
+static struct d3d12_state_object_pipeline_data *d3d12_state_object_pipeline_data_defer(
+        struct d3d12_state_object_pipeline_data *old_data,
+        struct d3d12_device *device)
+{
+    struct d3d12_state_object_pipeline_data *data;
+    unsigned int i;
+
+    /* hit_groups and dxil_libraries need deep copies since they currently only reference app-provided memory. */
+    data = dup_memory(old_data, sizeof(*old_data));
+    data->has_deep_duplication = true;
+
+    for (i = 0; i < data->hit_groups_count; i++)
+    {
+        D3D12_HIT_GROUP_DESC *desc;
+        data->hit_groups[i] = dup_memory(data->hit_groups[i], sizeof(*data->hit_groups[i]));
+        desc = (D3D12_HIT_GROUP_DESC *)data->hit_groups[i];
+        if (desc->HitGroupExport)
+            desc->HitGroupExport = vkd3d_wstrdup(desc->HitGroupExport);
+        if (desc->AnyHitShaderImport)
+            desc->AnyHitShaderImport = vkd3d_wstrdup(desc->AnyHitShaderImport);
+        if (desc->ClosestHitShaderImport)
+            desc->ClosestHitShaderImport = vkd3d_wstrdup(desc->ClosestHitShaderImport);
+        if (desc->IntersectionShaderImport)
+            desc->IntersectionShaderImport = vkd3d_wstrdup(desc->IntersectionShaderImport);
+    }
+
+    for (i = 0; i < data->dxil_libraries_count; i++)
+    {
+        D3D12_DXIL_LIBRARY_DESC *desc;
+        data->dxil_libraries[i] = dup_memory(data->dxil_libraries[i], sizeof(*data->dxil_libraries[i]));
+        desc = (D3D12_DXIL_LIBRARY_DESC *)data->dxil_libraries[i];
+
+        desc->DXILLibrary.pShaderBytecode = dup_memory(desc->DXILLibrary.pShaderBytecode, desc->DXILLibrary.BytecodeLength);
+        /* We have already parsed the module entry points and subobjects.
+         * Only thing we need to do is to keep the raw DXIL alive for later. */
+        desc->NumExports = 0;
+        desc->pExports = NULL;
+    }
+
+    for (i = 0; i < data->associations_count; i++)
+        if (data->associations[i].export)
+            data->associations[i].export = vkd3d_wstrdup(data->associations[i].export);
+
+    /* Some data structures are not needed after we have parsed the RTPSO.
+     * Clean them up early, so we're not wasting memory. */
+    d3d12_state_object_pipeline_data_cleanup_compile_temporaries(data, device);
+
+    return data;
 }
 
 #define VKD3D_ASSOCIATION_PRIORITY_INHERITED_COLLECTION 0
@@ -497,7 +648,7 @@ static void d3d12_state_object_pipeline_data_cleanup(struct d3d12_state_object_p
 #define VKD3D_ASSOCIATION_PRIORITY_EXPLICIT_DEFAULT 5
 #define VKD3D_ASSOCIATION_PRIORITY_EXPLICIT 6
 
-static HRESULT d3d12_state_object_add_collection(
+static HRESULT d3d12_state_object_add_collection_library(
         struct d3d12_state_object *collection,
         struct d3d12_state_object_pipeline_data *data,
         const D3D12_EXPORT_DESC *exports, unsigned int num_exports)
@@ -509,10 +660,10 @@ static HRESULT d3d12_state_object_add_collection(
         return E_OUTOFMEMORY;
 
     if (!vkd3d_array_reserve((void **)&data->associations, &data->associations_size,
-            data->associations_count + 3, sizeof(*data->associations)))
+            data->associations_count + 2, sizeof(*data->associations)))
         return E_OUTOFMEMORY;
 
-    RT_TRACE("EXISTING_COLLECTION:\n");
+    RT_TRACE("EXISTING_COLLECTION (library):\n");
     for (i = 0; i < collection->exports_count; i++)
     {
         if (collection->exports[i].plain_export)
@@ -541,6 +692,213 @@ static HRESULT d3d12_state_object_add_collection(
     return S_OK;
 }
 
+static HRESULT d3d12_state_object_add_collection_deferred(
+        struct d3d12_state_object_pipeline_data *deferred,
+        struct d3d12_state_object_pipeline_data *data,
+        const D3D12_EXPORT_DESC *exports, unsigned int num_exports)
+{
+    VKD3D_UNUSED size_t i, j;
+
+    /* Unlike with library linking, we have to only include objects that are exported,
+     * since they will be considered part of the main object, and we'll have no way of "hiding"
+     * unwanted exports unless we filter them here.
+     * For libraries, we filter them by using data->collections[] export list. */
+
+    for (i = 0; i < deferred->entry_points_count; i++)
+    {
+        const struct vkd3d_shader_library_entry_point *entry = &deferred->entry_points[i];
+        struct vkd3d_shader_library_entry_point *dup_entry;
+        const D3D12_EXPORT_DESC *export_desc = NULL;
+        bool accept_entry_point = false;
+
+        if (!num_exports)
+        {
+            accept_entry_point = true;
+        }
+        else
+        {
+            for (j = 0; j < num_exports; j++)
+                if (vkd3d_export_equal(exports[i].ExportToRename ? exports[i].ExportToRename : exports[i].Name, entry))
+                    break;
+
+            if (j < num_exports)
+            {
+                export_desc = &exports[i];
+                accept_entry_point = true;
+            }
+        }
+
+        if (accept_entry_point)
+        {
+            if (!vkd3d_array_reserve((void **)&data->entry_points, &data->entry_points_size,
+                    data->entry_points_count + 1, sizeof(*data->entry_points)))
+                return E_OUTOFMEMORY;
+
+            if (!vkd3d_array_reserve((void **)&data->dxil_libraries, &data->dxil_libraries_size,
+                    data->dxil_libraries_count + 1, sizeof(*data->dxil_libraries)))
+                return E_OUTOFMEMORY;
+
+            data->dxil_libraries[data->dxil_libraries_count] = deferred->dxil_libraries[entry->identifier];
+
+            dup_entry = &data->entry_points[data->entry_points_count];
+            *dup_entry = *entry;
+            dup_entry->identifier = data->dxil_libraries_count;
+
+            /* Reset these values so that they get compiled properly. They might have been clobbered
+             * while attempting to compile the old COLLECTION. */
+            dup_entry->pipeline_variant_index = UINT32_MAX;
+            dup_entry->stage_index = UINT32_MAX;
+
+            if (dup_entry->real_entry_point)
+                dup_entry->real_entry_point = vkd3d_strdup(dup_entry->real_entry_point);
+            if (dup_entry->debug_entry_point)
+                dup_entry->debug_entry_point = vkd3d_strdup(dup_entry->debug_entry_point);
+
+            if (export_desc)
+            {
+                dup_entry->mangled_entry_point = NULL;
+                dup_entry->plain_entry_point = vkd3d_wstrdup(export_desc->Name);
+            }
+            else
+            {
+                /* Forward the names directly if we exported everything. */
+                if (dup_entry->plain_entry_point)
+                    dup_entry->plain_entry_point = vkd3d_wstrdup(dup_entry->plain_entry_point);
+                if (dup_entry->mangled_entry_point)
+                    dup_entry->mangled_entry_point = vkd3d_wstrdup(dup_entry->mangled_entry_point);
+            }
+
+            data->dxil_libraries_count++;
+            data->entry_points_count++;
+        }
+    }
+
+    for (i = 0; i < deferred->hit_groups_count; i++)
+    {
+        bool accept_hit_group = false;
+
+        if (!num_exports)
+        {
+            accept_hit_group = true;
+        }
+        else
+        {
+            for (j = 0; j < num_exports; j++)
+            {
+                if (exports[i].ExportToRename)
+                    FIXME("Cannot rename deferred COLLECTION hit group export name.\n");
+
+                if (vkd3d_export_strequal(
+                        exports[i].ExportToRename ? exports[i].ExportToRename : exports[i].Name,
+                        deferred->hit_groups[i]->HitGroupExport))
+                {
+                    break;
+                }
+            }
+
+            if (j < num_exports)
+                accept_hit_group = true;
+        }
+
+        if (accept_hit_group)
+        {
+            if (!vkd3d_array_reserve((void **)&data->hit_groups, &data->hit_groups_size,
+                    data->hit_groups_count + 1, sizeof(*data->hit_groups)))
+                return E_OUTOFMEMORY;
+
+            /* If exports[i].ExportToRename is used, we need a way to partially dup hit group desc.
+             * This is esoteric enough that we'll defer until needed. */
+            data->hit_groups[data->hit_groups_count++] = deferred->hit_groups[i];
+        }
+    }
+
+    for (i = 0; i < deferred->subobjects_count; i++)
+    {
+        const D3D12_EXPORT_DESC *export_desc = NULL;
+        bool accept_subobject = false;
+
+        if (!num_exports)
+        {
+            accept_subobject = true;
+        }
+        else
+        {
+            for (j = 0; j < num_exports; j++)
+            {
+                if (exports[i].ExportToRename)
+                    FIXME("Cannot rename deferred COLLECTION subobject export name.\n");
+
+                if (vkd3d_export_strequal(
+                        exports[i].ExportToRename ? exports[i].ExportToRename : exports[i].Name,
+                        deferred->subobjects[i].name))
+                {
+                    break;
+                }
+            }
+
+            if (j < num_exports)
+            {
+                accept_subobject = true;
+                export_desc = &exports[i];
+            }
+        }
+
+        if (accept_subobject)
+        {
+            struct vkd3d_shader_library_subobject *dup;
+            if (!vkd3d_array_reserve((void **)&data->subobjects, &data->subobjects_size,
+                    data->subobjects_count + 1, sizeof(*data->subobjects)))
+                return E_OUTOFMEMORY;
+
+            dup = &data->subobjects[data->subobjects_count++];
+            *dup = deferred->subobjects[i];
+            dup->name = vkd3d_wstrdup(export_desc ? export_desc->Name : dup->name);
+            dup->borrowed_payloads = true;
+        }
+    }
+
+    /* We will inherit all associations. There shouldn't be any problem here since
+     * adding associations do not imply more exports being made, we'll just have associations that lead nowhere.
+     * However, if an association was considered non-explicit in the collection, consider it INHERITED_COLLECTION here.
+     * This way, we ensure that unrelated associations that were made in the COLLECTION don't conflict with
+     * any DEFAULT association in the proper RTPSO. Explicit associations only apply to
+     * specific exports and should not be able to cause conflicts. */
+    if (!vkd3d_array_reserve((void **)&data->associations, &data->associations_size,
+            data->associations_count + deferred->associations_count, sizeof(*data->associations)))
+        return E_OUTOFMEMORY;
+
+    for (i = 0; i < deferred->associations_count; i++)
+    {
+        struct d3d12_state_object_association *dup = &data->associations[data->associations_count++];
+        *dup = deferred->associations[i];
+
+        if ((dup->kind == VKD3D_SHADER_SUBOBJECT_KIND_LOCAL_ROOT_SIGNATURE ||
+                dup->kind == VKD3D_SHADER_SUBOBJECT_KIND_GLOBAL_ROOT_SIGNATURE) &&
+                dup->root_signature)
+        {
+            d3d12_root_signature_inc_ref(dup->root_signature);
+        }
+
+        if (dup->priority != VKD3D_ASSOCIATION_PRIORITY_EXPLICIT &&
+                dup->priority != VKD3D_ASSOCIATION_PRIORITY_DXIL_SUBOBJECT_ASSIGNMENT_EXPLICIT)
+            dup->priority = VKD3D_ASSOCIATION_PRIORITY_INHERITED_COLLECTION;
+    }
+
+    /* Do not need to hold reference to the original collection since we effectively dup all data we need. */
+    return S_OK;
+}
+
+static HRESULT d3d12_state_object_add_collection(
+        struct d3d12_state_object *collection,
+        struct d3d12_state_object_pipeline_data *data,
+        const D3D12_EXPORT_DESC *exports, unsigned int num_exports)
+{
+    if (collection->deferred_data)
+        return d3d12_state_object_add_collection_deferred(collection->deferred_data, data, exports, num_exports);
+    else
+        return d3d12_state_object_add_collection_library(collection, data, exports, num_exports);
+}
+
 static void d3d12_state_object_set_association_data(struct d3d12_state_object_association *association,
         const D3D12_STATE_SUBOBJECT *object)
 {
@@ -560,6 +918,8 @@ static void d3d12_state_object_set_association_data(struct d3d12_state_object_as
             types.global_root_signature = object->pDesc;
             association->root_signature =
                     impl_from_ID3D12RootSignature(types.global_root_signature->pGlobalRootSignature);
+            if (association->root_signature)
+                d3d12_root_signature_inc_ref(association->root_signature);
             break;
 
         case D3D12_STATE_SUBOBJECT_TYPE_LOCAL_ROOT_SIGNATURE:
@@ -567,6 +927,8 @@ static void d3d12_state_object_set_association_data(struct d3d12_state_object_as
             types.local_root_signature = object->pDesc;
             association->root_signature =
                     impl_from_ID3D12RootSignature(types.local_root_signature->pLocalRootSignature);
+            if (association->root_signature)
+                d3d12_root_signature_inc_ref(association->root_signature);
             break;
 
         case D3D12_STATE_SUBOBJECT_TYPE_RAYTRACING_SHADER_CONFIG:
@@ -610,6 +972,7 @@ static HRESULT d3d12_state_object_parse_subobject(struct d3d12_state_object *obj
              * but STATE_OBJECT_CONFIG doesn't change any functionality or compatibility rules really,
              * so just append flags. */
             const uint32_t supported_flags =
+                    D3D12_STATE_OBJECT_FLAG_ALLOW_LOCAL_DEPENDENCIES_ON_EXTERNAL_DEFINITIONS |
                     D3D12_STATE_OBJECT_FLAG_ALLOW_EXTERNAL_DEPENDENCIES_ON_LOCAL_DEFINITIONS |
                     D3D12_STATE_OBJECT_FLAG_ALLOW_STATE_OBJECT_ADDITIONS;
             const D3D12_STATE_OBJECT_CONFIG *object_config = obj->pDesc;
@@ -618,6 +981,13 @@ static HRESULT d3d12_state_object_parse_subobject(struct d3d12_state_object *obj
             {
                 FIXME("Object config flag #%x is not supported.\n", object->flags);
                 return E_INVALIDARG;
+            }
+
+            /* Need to ignore these flags on RTPSOs to avoid us doing funny things. */
+            if (object->type == D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE)
+            {
+                object->flags &= ~(D3D12_STATE_OBJECT_FLAG_ALLOW_LOCAL_DEPENDENCIES_ON_EXTERNAL_DEFINITIONS |
+                        D3D12_STATE_OBJECT_FLAG_ALLOW_EXTERNAL_DEPENDENCIES_ON_LOCAL_DEFINITIONS);
             }
 
             RT_TRACE("%p || STATE_OBJECT_CONFIG: #%x.\n", obj->pDesc, object_config->Flags);
@@ -656,6 +1026,9 @@ static HRESULT d3d12_state_object_parse_subobject(struct d3d12_state_object *obj
                     data->associations[data->associations_count].root_signature->compatibility_hash,
                     association_priority);
 
+            /* Hold reference in case we need to duplicate the data structure due to compile defer. */
+            if (data->associations[data->associations_count].root_signature)
+                d3d12_root_signature_inc_ref(data->associations[data->associations_count].root_signature);
             data->associations_count++;
             break;
         }
@@ -778,7 +1151,7 @@ static HRESULT d3d12_state_object_parse_subobject(struct d3d12_state_object *obj
 
             for (i = 0; i < data->subobjects_count; i++)
             {
-                if (vkd3d_export_strequal_mixed(association->SubobjectToAssociate, data->subobjects[i].name))
+                if (vkd3d_export_strequal(association->SubobjectToAssociate, data->subobjects[i].name))
                     break;
 
                 if (data->subobjects[i].kind == VKD3D_SHADER_SUBOBJECT_KIND_GLOBAL_ROOT_SIGNATURE ||
@@ -808,6 +1181,8 @@ static HRESULT d3d12_state_object_parse_subobject(struct d3d12_state_object *obj
                     case VKD3D_SHADER_SUBOBJECT_KIND_LOCAL_ROOT_SIGNATURE:
                         data->associations[data->associations_count].root_signature =
                                 data->subobject_root_signatures[root_signature_index];
+                        if (data->associations[data->associations_count].root_signature)
+                            d3d12_root_signature_inc_ref(data->associations[data->associations_count].root_signature);
                         break;
 
                     case VKD3D_SHADER_SUBOBJECT_KIND_RAYTRACING_PIPELINE_CONFIG1:
@@ -1873,8 +2248,22 @@ static HRESULT d3d12_state_object_compile_pipeline_variant(struct d3d12_state_ob
                     data->exports_count + 1, sizeof(*data->exports));
 
             export = &data->exports[data->exports_count];
-            export->mangled_export = entry->mangled_entry_point;
-            export->plain_export = entry->plain_entry_point;
+
+            if (object->flags & D3D12_STATE_OBJECT_FLAG_ALLOW_LOCAL_DEPENDENCIES_ON_EXTERNAL_DEFINITIONS)
+            {
+                /* Cannot pilfer since we might have to keep entry[] alive. */
+                export->mangled_export = entry->mangled_entry_point ? vkd3d_wstrdup(entry->mangled_entry_point) : NULL;
+                export->plain_export = entry->plain_entry_point ? vkd3d_wstrdup(entry->plain_entry_point) : NULL;
+            }
+            else
+            {
+                /* Pilfer */
+                export->mangled_export = entry->mangled_entry_point;
+                export->plain_export = entry->plain_entry_point;
+                entry->mangled_entry_point = NULL;
+                entry->plain_entry_point = NULL;
+            }
+
             export->pipeline_variant_index = pipeline_variant_index;
             export->per_variant_group_index = data->groups_count;
             export->general_stage_index = data->stages_count;
@@ -1884,9 +2273,6 @@ static HRESULT d3d12_state_object_compile_pipeline_variant(struct d3d12_state_ob
             export->inherited_collection_index = -1;
             export->inherited_collection_export_index = 0;
             export->general_stage = entry->stage;
-
-            entry->mangled_entry_point = NULL;
-            entry->plain_entry_point = NULL;
 
             vkd3d_array_reserve((void **) &data->groups, &data->groups_size,
                     data->groups_count + 1, sizeof(*data->groups));
@@ -2510,8 +2896,28 @@ static HRESULT d3d12_state_object_init(struct d3d12_state_object *object,
     return S_OK;
 
 fail:
-    d3d12_state_object_pipeline_data_cleanup(&data, object->device);
-    d3d12_state_object_cleanup(object);
+    if (object->flags & D3D12_STATE_OBJECT_FLAG_ALLOW_LOCAL_DEPENDENCIES_ON_EXTERNAL_DEFINITIONS)
+    {
+        /* If we allow local dependencies on external definitions, it's very plausible we'll fail
+         * a compilation. Defer this compilation. Need to keep alive what we parsed,
+         * and hand that over to any pipeline that includes the collection.
+         * Native drivers tend to compile what they can up-front, but partially compiling a pipeline
+         * will be too painful and there seems to be no spec requirement to do that, so
+         * we'll do the easiest thing. If we can compile everything, go for it. Otherwise, punt to link time. */
+        WARN("Deferring compilation of COLLECTION due to ALLOW_LOCAL_DEPENDENCIES_ON_EXTERNAL_DEFINITIONS.\n");
+        d3d12_state_object_cleanup(object);
+        object->deferred_data = d3d12_state_object_pipeline_data_defer(&data, object->device);
+        if (FAILED(hr = vkd3d_private_store_init(&object->private_store)))
+            d3d12_state_object_cleanup(object);
+        else
+            d3d12_device_add_ref(object->device);
+    }
+    else
+    {
+        d3d12_state_object_pipeline_data_cleanup(&data, object->device);
+        d3d12_state_object_cleanup(object);
+    }
+
     return hr;
 }
 

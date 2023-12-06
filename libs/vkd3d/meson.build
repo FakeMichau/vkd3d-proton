@@ -23,6 +23,7 @@ vkd3d_shaders =[
   'shaders/fs_copy_image_float.frag',
   'shaders/fs_copy_image_uint.frag',
   'shaders/fs_copy_image_stencil.frag',
+  'shaders/fs_copy_image_stencil_no_export.frag',
 
   'shaders/gs_fullscreen.geom',
   'shaders/vs_fullscreen.vert',
@@ -34,6 +35,20 @@ vkd3d_shaders =[
   'shaders/cs_execute_indirect_patch_debug_ring.comp',
   'shaders/cs_execute_indirect_multi_dispatch.comp',
   'shaders/cs_execute_indirect_multi_dispatch_state.comp',
+
+  'shaders/cs_sampler_feedback_decode_buffer_min_mip.comp',
+  'shaders/fs_sampler_feedback_decode_image_min_mip.frag',
+  'shaders/fs_sampler_feedback_decode_image_mip_used.frag',
+  'shaders/cs_sampler_feedback_encode_buffer_min_mip.comp',
+  'shaders/cs_sampler_feedback_encode_image_min_mip.comp',
+  'shaders/cs_sampler_feedback_encode_image_mip_used.comp',
+
+  'shaders/fs_resolve_color_float.frag',
+  'shaders/fs_resolve_color_uint.frag',
+  'shaders/fs_resolve_color_sint.frag',
+  'shaders/fs_resolve_depth.frag',
+  'shaders/fs_resolve_stencil.frag',
+  'shaders/fs_resolve_stencil_no_export.frag',
 ]
 
 vkd3d_src = [
